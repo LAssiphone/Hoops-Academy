@@ -105,6 +105,9 @@
       <h1>Кто играет?</h1>
       <p id="profileNote" style="font-size:12px;color:#9b8f80;margin:2px 0 8px;">Прогресс и звёзды сохраняются на этом устройстве — у каждого игрока свои.</p>
       <div id="profileList" style="width:100%;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+      <div class="pill">Сложность</div>
+      <div id="diffRow" style="display:flex;gap:6px;justify-content:center;margin:8px 0 4px;flex-wrap:wrap;"></div>
+      <div id="diffHint" style="font-size:11px;color:#9b8f80;margin-bottom:10px;text-align:center;"></div>
       <div class="pill">Новый игрок</div>
       <div id="avatarRow" style="display:flex;gap:8px;justify-content:center;margin:8px 0;"></div>
       <div style="display:flex;gap:8px;width:100%;max-width:320px;">
@@ -262,6 +265,7 @@ function applyProfile(name){
   // copy saved data INTO the live objects (they're referenced all over the code)
   const p=DB.profiles[name]; if(!p) return;
   DB.active=name; p.last=Date.now();
+  setDifficulty(p.difficulty||'norm');
   Object.keys(progress).forEach(k=>delete progress[k]);
   Object.assign(progress, p.progress||{});
   Object.assign(STATS, blankStats(), p.stats||{});
@@ -292,6 +296,19 @@ function pushHistory(entry){
 /* ---------- game state ---------- */
 let phase='menu';     // menu | intro | demo | train | test | done
 let currentLesson='gng';   // which tactic we're teaching (controls defender aggression etc.)
+
+/* ---------- difficulty levels: scale defender speed, required separation & timings ----------
+   defMul   — multiplier on defender movement speed (chase/static/deny)
+   sepNeed  — separation (px) needed before the pass fires in cut lessons
+   laneNeed — clear-lane distance (px) the pass requires
+   steal    — seconds you may hold the ball under pressure before a turnover */
+const DIFFS={
+  easy:{key:'easy', name:'Новичок', defMul:0.62, sepNeed:32, laneNeed:20, steal:5.5},
+  norm:{key:'norm', name:'Игрок',   defMul:1.00, sepNeed:40, laneNeed:26, steal:4.5},
+  hard:{key:'hard', name:'Профи',   defMul:1.30, sepNeed:44, laneNeed:28, steal:3.5},
+};
+let difficulty=DIFFS.norm;          // current level (restored from the profile)
+function setDifficulty(key){ difficulty = DIFFS[key]||DIFFS.norm; }
 let me, mate, defender, ball;
 let coachTimer=0;
 let demoT=0, demoStep=0;
@@ -376,6 +393,45 @@ let LAYOUTS=[
   {"off":[[300,350],[335,220],[112,260],[67,145],[313,123]],"def":[[230,307],[289,236],[132,229],[89,122],[298,90]],"open":1,"zone":[209,126]},
 ];
 let layoutOrder=[], layoutPos=0;
+let randomLayouts=true;   // generate fresh layouts each rep (fallback to the hand-made set)
+
+/* ---------- random GNG layout generator (validated, so the lesson stays solvable) ----------
+   Mirrors the editor's 4 teaching invariants: clean first pass, open zone, clear cut lane,
+   clear return lane, and the zone is goal-side ahead of me. Falls back to LAYOUTS if a
+   valid one isn't found within the attempt budget. */
+function segDist(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1;let t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(p[0]-(a[0]+t*dx),p[1]-(a[1]+t*dy));}
+function d2(a,b){return Math.hypot(a[0]-b[0],a[1]-b[1]);}
+function genGngLayout(){
+  for(let at=0; at<200; at++){
+    const me=[rnd(80,320), rnd(338,378)];
+    const mates=[[rnd(70,150),rnd(205,268)],[rnd(250,330),rnd(205,268)],[rnd(72,160),rnd(112,162)],[rnd(240,328),rnd(112,162)]];
+    if(Math.random()<0.4){const k=(Math.random()*4)|0; mates[k]=[clampX(mates[k][0]+rnd(-45,45)),clampY(mates[k][1]+rnd(-18,18))];}
+    const off=[me,...mates];
+    const def=off.map((p,i)=>{const d=(i===0?rnd(42,68):rnd(16,30));const vx=HOOP.x-p[0],vy=HOOP.y-p[1],vm=Math.hypot(vx,vy)||1;return [clampX(p[0]+vx/vm*d+rnd(-10,10)),clampY(p[1]+vy/vm*d+rnd(-8,8))];});
+    const all=[...off,...def];
+    let sp=1e9; for(let a=0;a<all.length;a++)for(let b=a+1;b<all.length;b++)sp=Math.min(sp,d2(all[a],all[b]));
+    if(sp<27) continue;
+    let open=-1,fp=-1;
+    for(let i=1;i<off.length;i++){let mind=1e9;for(let k=0;k<def.length;k++){if(k===i)continue;mind=Math.min(mind,segDist(def[k],me,off[i]));}if(mind>fp){fp=mind;open=i;}}
+    if(fp<27) continue;
+    const om=off[open];
+    let best=null,bs=-1;
+    for(let s=0;s<120;s++){
+      const z=[rnd(60,340),rnd(92,228)];
+      if(z[1]>me[1]-42) continue;
+      if(d2(z,me)<70||d2(z,om)<58) continue;
+      let zf=1e9; def.forEach(d=>zf=Math.min(zf,d2(d,z))); if(zf<54) continue;
+      let cut=1e9,ret=1e9; def.forEach((d,k)=>{if(k===0)return;cut=Math.min(cut,segDist(d,me,z));ret=Math.min(ret,segDist(d,om,z));});
+      if(cut<27||ret<27) continue;
+      const sc=zf+cut+ret; if(sc>bs){bs=sc;best=z;}
+    }
+    if(!best) continue;
+    return {off:off.map(p=>[Math.round(p[0]),Math.round(p[1])]),def:def.map(p=>[Math.round(p[0]),Math.round(p[1])]),open,zone:[Math.round(best[0]),Math.round(best[1])]};
+  }
+  return null;   // caller falls back to the curated set
+}
+
+let layoutOrderRef=null;
 function nextLayoutIndex(){
   if(layoutPos>=layoutOrder.length){
     layoutOrder=LAYOUTS.map((_,i)=>i);
@@ -387,7 +443,9 @@ function nextLayoutIndex(){
 
 function setupScene(){
   if(CUT_CFG[currentLesson]){ setupSceneCut(); return; }
-  const L = forcedLayout || LAYOUTS[nextLayoutIndex()];
+  let L = forcedLayout;
+  if(!L && randomLayouts){ L = genGngLayout(); }   // fresh validated layout
+  if(!L) L = LAYOUTS[nextLayoutIndex()];            // fallback: curated set
   forcedLayout = null;
   teamPlayers=L.off.map((p,i)=>({x:p[0],y:p[1],hasBall:i===0,home:{x:p[0],y:p[1]},role:i,vx:0,vy:0}));
   defs=L.def.map((p,i)=>({x:p[0],y:p[1],mark:i,slack:(i===L.open)}));
@@ -472,11 +530,27 @@ const CUT_CFG={
     ]},
 };
 let cutIdxByLesson={}, decoyPoint=null;
+// per-lesson jitter for layout variety (screen=0: the "run tight past the wall" path is exact)
+const CUT_JIT={vcut:9, backdoor:9, screen:0};
+function makeCutVariant(base, lesson){
+  // mirror left/right at random + small shared per-player jitter (defender stays glued to his man)
+  const mir=Math.random()<0.5;
+  const M=p=>[mir? (W-p[0]):p[0], p[1]];
+  const J=randomLayouts ? (CUT_JIT[lesson]||0) : 0;
+  const dxy=base.off.map(()=>[rnd(-J,J), rnd(-J*0.85,J*0.85)]);
+  const off=base.off.map((p,i)=>{const m=M(p);return [clampX(m[0]+dxy[i][0]),clampY(m[1]+dxy[i][1])];});
+  const def=base.def.map((p,i)=>{const m=M(p);return [clampX(m[0]+dxy[i][0]),clampY(m[1]+dxy[i][1])];});
+  const dM=M(base.decoy), zM=M(base.zone);
+  const decoy=[clampX(dM[0]+dxy[0][0]),clampY(dM[1]+dxy[0][1])];
+  const zone =[clampX(zM[0]+dxy[0][0]),clampY(zM[1]+dxy[0][1])];
+  return {off,def,decoy,zone};
+}
 function setupSceneCut(){
   const cfg=CUT_CFG[currentLesson];
   const idx=(cutIdxByLesson[currentLesson]||0);
-  const L=cfg.layouts[idx % cfg.layouts.length];
+  const base=cfg.layouts[idx % cfg.layouts.length];
   cutIdxByLesson[currentLesson]=idx+1;
+  const L = makeCutVariant(base, currentLesson);
   teamPlayers=L.off.map((p,i)=>({x:p[0],y:p[1],hasBall:i===1,home:{x:p[0],y:p[1]},role:i,vx:0,vy:0}));
   defs=L.def.map((p,i)=>({x:p[0],y:p[1],mark:i,slack:false}));
   openMateIdx=1;
@@ -610,12 +684,12 @@ let runFails=0;   // turnovers during the current train/test run (drives the sta
 function startTrain(){
   document.getElementById('skipDemoBtn').classList.add('hidden');
   phase='train'; setBadge('ТРЕНИРОВКА'); setupScene();
-  reps=0; repsNeeded=2; stars=0; setStars(0); runFails=0;
+  reps=0; repsNeeded=3; stars=0; setStars(0); runFails=0;
   beginRep(true);
 }
 function startTest(){
   phase='test'; setBadge('ЗАЧЁТ'); setupScene();
-  reps=0; repsNeeded=3; stars=0; setStars(0); runFails=0;
+  reps=0; repsNeeded=5; stars=0; setStars(0); runFails=0;
   beginRep(false);
 }
 let guided=true;
@@ -665,7 +739,7 @@ function update(dt){
       // CUT lessons: MY defender plays live — chases me ('chase') or overplays the
       // passing lane between me and the ball ('deny'). Everyone else holds.
       const cfg=CUT_CFG[currentLesson];
-      const chaseSpd = isTest ? 2.4 : 1.7;
+      const chaseSpd = (isTest ? 2.4 : 1.7) * difficulty.defMul;
       for(let i=0;i<defs.length;i++){
         const d=defs[i], man=teamPlayers[d.mark];
         if(i===0 && stepState!=='receiving' && stepState!=='shooting'){
@@ -690,7 +764,7 @@ function update(dt){
       // lesson 1 (give-and-go): defenders barely move, so the task is MOVING into the open
       // zone — not shaking off a chaser. Later tactics use livelier defense.
       const almostStatic = (currentLesson==='gng');
-      const spd = almostStatic ? (isTest ? 0.6 : 0.35) : (isTest ? 3.0 : 1.8);
+      const spd = (almostStatic ? (isTest ? 0.6 : 0.35) : (isTest ? 3.0 : 1.8)) * difficulty.defMul;
       for(let i=0;i<defs.length;i++){
         const d=defs[i], man=teamPlayers[d.mark];
         let tightness = 0.12;                 // how far hoop-side the defender sits
@@ -748,7 +822,7 @@ function update(dt){
       let pi=-1, pd=R*2+(isTest?12:18);
       for(let i=0;i<defs.length;i++){const dd=dist(defs[i],me); if(dd<pd){pd=dd;pi=i;}}
       presserIdx=pi;
-      stealLimit = isTest ? 3.0 : 4.5;   // 3s in test, 4.5s in training
+      stealLimit = difficulty.steal + (isTest?0:1.0);   // a bit more lenient in training
       if(pi>=0){
         guardT+=dt;
         if(guided && guardT>stealLimit*0.55){
@@ -767,7 +841,7 @@ function update(dt){
     if(stepState==='cutting' && mate.hasBall && targetZone){
       const inZone = dist(me,targetZone)<targetZone.r;
       const laneGap = returnLaneGap();
-      const need = isTest ? 22 : 28;
+      const need = difficulty.laneNeed;
       if(inZone && laneGap>need){
         // mate's own defender can't intercept the return pass either
         let mp=-1, mpd=R*2+16;
@@ -793,7 +867,7 @@ function update(dt){
       } else if(stepState==='cutout' && mate.hasBall && targetZone){
         const inZone = dist(me,targetZone)<targetZone.r;
         const sep = dist(defender,me);                 // separation from my marker
-        const sepNeed = R*2+14;
+        const sepNeed = difficulty.sepNeed;
         // backdoor: the pass goes PAST the beaten marker, so once I'm goal-side of him
         // he no longer counts as blocking the lane (and can't intercept).
         const beaten = cfg.defense==='deny' && dist(me,HOOP) < dist(defender,HOOP)-10;
@@ -810,7 +884,7 @@ function update(dt){
           }
         }
         const sepOK = sep>sepNeed || beaten;
-        if(inZone && sepOK && laneGap>(isTest?22:26)){
+        if(inZone && sepOK && laneGap>difficulty.laneNeed){
           let mp=-1, mpd=R*2+16;
           for(let i=0;i<defs.length;i++){const dd=dist(defs[i],mate); if(dd<mpd){mpd=dd;mp=i;}}
           const immune = beaten ? [mp,0] : [mp];
@@ -1615,6 +1689,26 @@ window.addEventListener('resize',()=>{ if(!editorScreen.classList.contains('hidd
 const profileScreen=document.getElementById('profileScreen');
 const AVATARS=['🏀','⚡','🦅','🐺','🚀','⭐'];
 let pickedAvatar='🏀';
+const DIFF_HINTS={easy:'Защита медленная, открыться легко — для самых маленьких.',
+  norm:'Сбалансированно — защита живая, но честная.',
+  hard:'Быстрая цепкая защита, нужен чёткий отрыв — для опытных.'};
+function renderDiff(){
+  const row=document.getElementById('diffRow');
+  row.innerHTML='';
+  ['easy','norm','hard'].forEach(k=>{
+    const d=DIFFS[k], on=(difficulty.key===k);
+    const b=document.createElement('button');
+    b.textContent=d.name;
+    b.style.cssText='font-size:13px;font-weight:700;padding:8px 14px;border-radius:10px;font-family:\'Space Mono\',monospace;cursor:pointer;background:'+(on?'#19c2a0':'#15110d')+';color:'+(on?'#0f0b08':'#cabfae')+';border:2px solid '+(on?'#19c2a0':'#3a332a')+';';
+    b.onclick=()=>{
+      setDifficulty(k);
+      if(storageOK && DB.active && DB.profiles[DB.active]){ DB.profiles[DB.active].difficulty=k; saveDB(); }
+      renderDiff();
+    };
+    row.appendChild(b);
+  });
+  document.getElementById('diffHint').textContent=DIFF_HINTS[difficulty.key];
+}
 function renderAvatars(){
   const row=document.getElementById('avatarRow');
   row.innerHTML='';
@@ -1662,7 +1756,7 @@ function openProfile(canGoBack){
   if(!storageOK){
     document.getElementById('profileNote').innerHTML='⚠️ В этом просмотре сохранение недоступно (нет localStorage) — игра идёт в режиме гостя. На сайте всё сохраняется.';
   }
-  renderProfiles(); renderAvatars();
+  renderProfiles(); renderAvatars(); renderDiff();
 }
 function closeProfile(){
   profileScreen.classList.add('hidden');
@@ -1680,7 +1774,7 @@ document.getElementById('createProfileBtn').onclick=()=>{
   }
   const exists=Object.keys(DB.profiles).find(n=>n.toLowerCase()===name.toLowerCase());
   if(exists){ applyProfile(exists); inp.value=''; closeProfile(); return; }
-  DB.profiles[name]={avatar:pickedAvatar, progress:{}, stats:blankStats(), created:Date.now(), last:Date.now()};
+  DB.profiles[name]={avatar:pickedAvatar, difficulty:difficulty.key, progress:{}, stats:blankStats(), created:Date.now(), last:Date.now()};
   applyProfile(name);
   inp.value='';
   closeProfile();
