@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HOOPS ACADEMY — школа движения без мяча</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap');
+  :root{
+    --court:#c8762e; --line:#f4e3c8; --ink:#161210;
+    --hot:#ff5421; --teal:#19c2a0; --gold:#ffd23f; --bg:#1a1410;
+    --blue:#2b6cff; --red:#ff3b5c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;}
+  html,body{height:100%;overflow:hidden;background:var(--bg);font-family:'Space Mono',monospace;color:var(--line);}
+  #wrap{position:fixed;inset:0;display:flex;flex-direction:column;}
+  header{display:flex;gap:8px;padding:8px 10px;background:linear-gradient(90deg,var(--teal),#16a98a);
+    color:var(--ink);border-bottom:3px solid var(--ink);align-items:center;}
+  .badge{font-family:'Archivo Black',sans-serif;font-size:13px;background:var(--ink);color:var(--gold);
+    padding:5px 10px;border-radius:8px;white-space:nowrap;}
+  .htitle{flex:1;font-weight:700;font-size:13px;color:var(--ink);line-height:1.15;}
+  .htitle small{display:block;font-weight:400;font-size:10px;color:#0c3b31;}
+  .stars{font-size:15px;letter-spacing:1px;}
+  #stage{flex:1;position:relative;display:flex;align-items:center;justify-content:center;}
+  canvas{display:block;touch-action:none;background:#0f0b08;
+    box-shadow:0 0 0 3px var(--ink),0 12px 40px rgba(0,0,0,.5);}
+
+  /* coaching banner */
+  #coach{position:absolute;left:50%;top:10px;transform:translateX(-50%);
+    max-width:90%;background:rgba(20,18,16,.92);border:2px solid var(--gold);border-radius:12px;
+    padding:10px 14px;font-size:13px;line-height:1.4;color:#fff;z-index:6;text-align:center;
+    box-shadow:0 6px 20px rgba(0,0,0,.4);}
+  #coach b{color:var(--gold);}
+  #coach.hidden{display:none;}
+  #skipDemoBtn{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+    z-index:6;font-family:'Space Mono',monospace;font-weight:700;font-size:13px;
+    background:rgba(20,18,16,.9);color:var(--gold);border:2px solid var(--gold);
+    border-radius:10px;padding:10px 18px;cursor:pointer;}
+  #skipDemoBtn:active{transform:translateX(-50%) scale(.96);}
+  #skipDemoBtn.hidden{display:none;}
+
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:flex-start;text-align:center;background:rgba(20,18,16,.92);
+    backdrop-filter:blur(3px);padding:18px;z-index:8;overflow-y:auto;}
+  .overlay-inner{margin:auto 0;display:flex;flex-direction:column;align-items:center;gap:13px;width:100%;}
+  .overlay h1{font-family:'Archivo Black',sans-serif;font-size:28px;line-height:.98;
+    color:var(--gold);text-transform:uppercase;letter-spacing:-1px;}
+  .overlay h1 span{color:var(--teal);}
+  .overlay p{max-width:340px;font-size:13px;line-height:1.45;color:#d8cdbf;}
+  .overlay .big{font-family:'Archivo Black',sans-serif;font-size:46px;color:var(--gold);}
+  .lvls{display:flex;flex-direction:column;gap:8px;width:100%;max-width:340px;}
+  .lvl{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.05);
+    border:2px solid rgba(255,255,255,.16);border-radius:12px;padding:10px 12px;text-align:left;
+    cursor:pointer;transition:all .12s;}
+  .lvl.open:active{transform:scale(.98);}
+  .lvl.locked{opacity:.4;cursor:default;}
+  .lvl .num{font-family:'Archivo Black',sans-serif;font-size:20px;color:var(--teal);min-width:26px;}
+  .lvl .body{flex:1;}
+  .lvl .body .t{font-weight:700;font-size:14px;color:#fff;}
+  .lvl .body .d{font-size:11px;color:#b3a795;line-height:1.3;}
+  .lvl .st{font-size:13px;color:var(--gold);white-space:nowrap;}
+  button.go{font-family:'Archivo Black',sans-serif;font-size:17px;letter-spacing:1px;
+    text-transform:uppercase;background:var(--teal);color:var(--ink);border:3px solid var(--ink);
+    border-radius:12px;padding:12px 28px;cursor:pointer;box-shadow:0 5px 0 var(--ink);}
+  button.go:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink);}
+  button.ghost{background:#3a322a;color:#e9dfd1;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+  .hidden{display:none!important;}
+  .pill{font-size:11px;color:#bba;letter-spacing:1px;text-transform:uppercase;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <header>
+    <div class="badge" id="phaseBadge">УРОК</div>
+    <div class="htitle" id="hTitle">Give-and-go<small>отдал пас — открылся</small></div>
+    <div id="hScore" style="font-size:11px;font-weight:700;color:#ffd23f;text-align:right;line-height:1.3;margin-right:6px;display:none;">0<br><span style="color:#19c2a0">×0</span></div>
+    <div class="stars" id="hStars"></div>
+    <button id="hExit" style="display:none;background:none;border:2px solid #3a332a;color:#9b8f80;border-radius:8px;font-size:13px;font-weight:700;padding:3px 9px;margin-left:6px;font-family:'Space Mono',monospace;">✕</button>
+  </header>
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="coach" class="hidden"></div>
+    <button id="skipDemoBtn" class="hidden">Пропустить показ ⏭</button>
+
+    <!-- MENU -->
+    <div class="overlay" id="menuScreen">
+     <div class="overlay-inner">
+      <h1>HOOPS <span>ACADEMY</span></h1>
+      <p>Учимся двигаться <b>без мяча</b>: куда бежать, когда открыться, как помочь команде. Каждый урок — новая тактика.</p>
+      <div class="pill">Уроки</div>
+      <div class="lvls" id="lvlList"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+        <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
+        <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
+      </div>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса.</p>
+     </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="overlay hidden" id="statsScreen">
+     <div class="overlay-inner" style="max-width:520px;width:100%;">
+      <h1>Статистика</h1>
+      <div id="statsCards" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:4px 0 10px;"></div>
+      <div class="pill">Прогресс по урокам</div>
+      <div id="statsProgress" style="font-size:13px;color:#cabfae;line-height:1.7;margin-bottom:10px;"></div>
+      <div class="pill">Последние попытки</div>
+      <div id="statsHistory" style="font-size:12px;color:#b3a795;line-height:1.6;max-height:34vh;overflow:auto;width:100%;margin-top:6px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px;">
+        <button class="go" id="statsBackBtn" style="font-size:14px;padding:10px 18px">← Меню</button>
+        <button class="go ghost" id="statsCopyBtn" style="font-size:14px;padding:10px 18px">⧉ Экспорт</button>
+      </div>
+     </div>
+    </div>
+
+    <!-- EDITOR -->
+    <div class="overlay hidden" id="editorScreen" style="padding:0;justify-content:flex-start;">
+     <div style="width:100%;display:flex;flex-direction:column;height:100%;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#15110d;border-bottom:2px solid #2a241d;">
+        <button class="go ghost" id="edBackBtn" style="font-size:12px;padding:7px 12px">← Меню</button>
+        <div style="flex:1;font-weight:700;font-size:13px;color:#e9dfd1">Редактор расстановок</div>
+        <div id="edValid" style="font-size:12px;font-weight:700;padding:5px 10px;border-radius:8px;">…</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 10px;background:#120e0a;border-bottom:1px solid #2a241d;">
+        <button class="go ghost" id="edPrev" style="font-size:15px;padding:6px 14px">◀</button>
+        <div id="edPos" style="font-size:13px;font-weight:700;color:#ffd23f;min-width:120px;text-align:center;">Расстановка 1 / 10</div>
+        <button class="go ghost" id="edNext" style="font-size:15px;padding:6px 14px">▶</button>
+        <button class="go ghost" id="edNew" style="font-size:12px;padding:6px 12px">＋ Новая</button>
+      </div>
+      <div id="edStage" style="flex:1;position:relative;display:flex;align-items:center;justify-content:center;">
+        <canvas id="edCanvas" style="touch-action:none;background:#0f0b08;box-shadow:0 0 0 3px #161210;"></canvas>
+      </div>
+      <div id="edChecks" style="padding:6px 12px;font-size:11px;color:#b3a795;line-height:1.5;background:#15110d;"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:8px 10px 14px;background:#15110d;">
+        <button class="go" id="edPlayBtn" style="font-size:13px;padding:10px 14px">▶ Тест</button>
+        <button class="go" id="edSaveBtn" style="font-size:13px;padding:10px 14px">💾 Сохранить</button>
+        <button class="go ghost" id="edCopyBtn" style="font-size:13px;padding:10px 14px">⧉ JSON</button>
+        <button class="go ghost" id="edCopyAllBtn" style="font-size:13px;padding:10px 14px">⧉ Весь набор</button>
+        <button class="go ghost" id="edDelBtn" style="font-size:13px;padding:10px 14px">🗑 Удалить</button>
+      </div>
+     </div>
+    </div>
+
+    <!-- LESSON INTRO -->
+    <div class="overlay hidden" id="introScreen">
+     <div class="overlay-inner">
+      <div class="pill" id="introPill">Урок 1</div>
+      <h1 id="introTitle">Give-and-go</h1>
+      <p id="introText"></p>
+      <div class="row">
+        <button class="go" id="watchBtn">Смотреть показ ▶</button>
+        <button class="go ghost" id="skipIntroBtn">Пропустить ⏭</button>
+      </div>
+     </div>
+    </div>
+
+    <!-- PHASE COMPLETE -->
+    <div class="overlay hidden" id="doneScreen">
+     <div class="overlay-inner">
+      <h1 id="doneTitle">Готово!</h1>
+      <div class="big" id="doneStars">★★★</div>
+      <p id="doneText"></p>
+      <div class="row">
+        <button class="go" id="nextBtn">Дальше</button>
+        <button class="go ghost" id="menuBtn">В меню</button>
+      </div>
+     </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(()=>{
+"use strict";
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const coach=document.getElementById('coach'),
+      phaseBadge=document.getElementById('phaseBadge'),
+      hStars=document.getElementById('hStars'),
+      menuScreen=document.getElementById('menuScreen'),
+      introScreen=document.getElementById('introScreen'),
+      doneScreen=document.getElementById('doneScreen'),
+      lvlList=document.getElementById('lvlList');
+
+/* ---------- court geometry (half court) ---------- */
+const W=400, H=440;
+const PAD=20, R=13;
+const HOOP={x:W/2, y:46};
+let scale=1;
+function fit(){
+  const stage=document.getElementById('stage');
+  const aw=stage.clientWidth, ah=stage.clientHeight;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  scale=Math.min(aw/W, ah/H);
+  cv.style.width=(W*scale)+'px'; cv.style.height=(H*scale)+'px';
+  cv.width=Math.round(W*scale*dpr); cv.height=Math.round(H*scale*dpr);
+  ctx.setTransform(scale*dpr,0,0,scale*dpr,0,0);
+}
+window.addEventListener('resize',fit);
+function clampX(x){return Math.max(PAD+R,Math.min(W-PAD-R,x));}
+function clampY(y){return Math.max(PAD+R,Math.min(H-PAD-R,y));}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function lerp(a,b,t){return a+(b-a)*t;}
+
+/* ---------- progress ---------- */
+const LEVELS=[
+  {id:'gng', title:'Give-and-go', tag:'отдал пас — открылся',
+   intro:'Главное правило нападающего: <b>отдал пас — не стой!</b> Сразу беги в свободное место, чтобы получить мяч обратно ближе к кольцу.'},
+  {id:'vcut', title:'V-образный рывок', tag:'оторвись от защитника',
+   intro:'Мяч у партнёра, а тебя плотно держат. <b>Обмани защитника:</b> беги к кольцу, а потом резко смени направление — и получай пас на свободном месте!'},
+  {id:'backdoor', title:'Бэкдор', tag:'защитник перекрыл пас — режь за спину',
+   intro:'Защитник встал <b>между тобой и мячом</b> и перекрывает передачу. Его же плотность — твоё оружие: шагни к мячу и <b>резко рвани за спину</b>, к кольцу!'},
+  {id:'screen', title:'Заслон', tag:'используй стенку партнёра',
+   intro:'Партнёр поставил <b>заслон</b> — встал как стенка. Пробеги <b>вплотную</b> к нему: твой защитник врежется и застрянет, а ты выскочишь на свободу!'},
+];
+const progress={gng:0}; // stars earned per level
+
+/* ---------- stats: points, streaks, records, history (session-only) ---------- */
+const STATS={
+  totalPoints:0,        // accumulated across the whole session
+  bestRep:0,            // best single-rep score
+  streak:0,             // current consecutive successes
+  bestStreak:0,         // best consecutive successes
+  reps:0, success:0, fails:0,
+  history:[],           // recent attempts: {lesson, ok, pts, t}
+};
+let repStartT=0;        // performance.now() when the current rep began (for speed bonus)
+function lessonTitle(id){ const l=LEVELS.find(x=>x.id===id); return l?l.title:id; }
+function pushHistory(entry){
+  STATS.history.unshift(entry);
+  if(STATS.history.length>30) STATS.history.pop();
+}
+
+/* ---------- game state ---------- */
+let phase='menu';     // menu | intro | demo | train | test | done
+let currentLesson='gng';   // which tactic we're teaching (controls defender aggression etc.)
+let me, mate, defender, ball;
+let coachTimer=0;
+let demoT=0, demoStep=0;
+let targetZone=null;  // {x,y,r} where the player should cut to
+let arrow=null;       // {x1,y1,x2,y2} guidance arrow
+let reps=0, repsNeeded, stars=0;
+let stepState='';     // sub-state within a rep
+let guardT=0;         // how long the ballhandler has been pressured
+let stealLimit=3.0;   // current steal threshold (3–5s); also the pass window
+let presserIdx=-1;    // which defender is "stuck" to the ballhandler (can't intercept his pass)
+let dashT=0, dashCooldown=0;  // change-of-direction burst
+let shotT=0, netT=0;          // auto-shot delay & net splash animation
+let repLocked=false;  // true while a fail/success animation resolves
+let raf=0,lastT=0,running=false;
+let flashMsg=null, flashT=0, flashColor='#19c2a0';
+
+/* ---------- dual joystick input ---------- */
+function mkJoy(side){return {active:false,id:null,base:{x:0,y:0},dx:0,dy:0,r:46,side,released:false,relx:0,rely:0};}
+const moveJoy=mkJoy('L'), passJoy=mkJoy('R');
+function toLogic(cx,cy){const r=cv.getBoundingClientRect();return {x:(cx-r.left)/scale,y:(cy-r.top)/scale};}
+function pDown(id,p){
+  const left = p.x < W*0.5;
+  const j = left?moveJoy:passJoy;
+  if(j.active) return;
+  j.active=true; j.id=id; j.base={x:p.x,y:p.y}; j.dx=0; j.dy=0; j.released=false;
+}
+function pMove(id,p){
+  for(const j of [moveJoy,passJoy]){
+    if(j.active && j.id===id){
+      let dx=p.x-j.base.x, dy=p.y-j.base.y;
+      const m=Math.hypot(dx,dy)||1;
+      if(m>j.r){dx=dx/m*j.r; dy=dy/m*j.r;}
+      j.dx=dx/j.r; j.dy=dy/j.r;
+    }
+  }
+}
+function pUp(id){
+  for(const j of [moveJoy,passJoy]){
+    if(j.active && j.id===id){
+      if(j.side==='R' && (Math.abs(j.dx)+Math.abs(j.dy))>0.35){ j.released=true; j.relx=j.dx; j.rely=j.dy; }
+      j.active=false; j.id=null; j.dx=0; j.dy=0;
+    }
+  }
+}
+cv.addEventListener('touchstart',e=>{for(const t of e.changedTouches)pDown(t.identifier,toLogic(t.clientX,t.clientY));e.preventDefault();},{passive:false});
+cv.addEventListener('touchmove',e=>{for(const t of e.changedTouches)pMove(t.identifier,toLogic(t.clientX,t.clientY));e.preventDefault();},{passive:false});
+cv.addEventListener('touchend',e=>{for(const t of e.changedTouches)pUp(t.identifier);e.preventDefault();},{passive:false});
+cv.addEventListener('mousedown',e=>pDown('m',toLogic(e.clientX,e.clientY)));
+cv.addEventListener('mousemove',e=>{if(e.buttons)pMove('m',toLogic(e.clientX,e.clientY));});
+window.addEventListener('mouseup',()=>pUp('m'));
+
+/* ---------- helpers ---------- */
+function showCoach(html){coach.innerHTML=html;coach.classList.remove('hidden');}
+function hideCoach(){coach.classList.add('hidden');}
+function flash(t,c){flashMsg=t;flashT=0;flashColor=c||'#19c2a0';}
+function setBadge(t){phaseBadge.textContent=t; updateScoreHud();}
+function setStars(n){let s='';for(let i=0;i<3;i++)s+= i<n?'★':'☆';hStars.textContent=s;}
+function updateScoreHud(){
+  const el=document.getElementById('hScore'), ex=document.getElementById('hExit');
+  const inGame=(phase==='train'||phase==='test');
+  el.style.display = inGame?'block':'none';
+  ex.style.display = (inGame||phase==='demo')?'block':'none';
+  if(inGame) el.innerHTML = STATS.totalPoints+'<br><span style="color:#19c2a0">×'+STATS.streak+'</span>';
+}
+
+/* ---------- scene setup: 10 hand-verified 5-on-5 layouts ----------
+   Each was validated offline against all lesson principles:
+   clean direct first pass · genuinely open zone · clean straight cut lane (me->zone)
+   · clean return pass (mate->zone) · zone forward toward the hoop.
+   off[0] = me (ballhandler). open = index of the open teammate. zone = where I cut to. */
+let teamPlayers=[], defs=[];
+let LAYOUTS=[
+  {"off":[[200,360],[95,255],[325,253],[75,136],[325,152]],"def":[[231,304],[101,200],[294,213],[95,117],[321,132]],"open":1,"zone":[198,162]},
+  {"off":[[200,360],[332,299],[95,250],[300,150],[130,155]],"def":[[166,305],[270,300],[114,213],[282,131],[143,135]],"open":1,"zone":[217,208]},
+  {"off":[[130,360],[74,239],[321,254],[310,140],[200,103]],"def":[[192,326],[97,187],[300,228],[290,123],[203,72]],"open":1,"zone":[178,212]},
+  {"off":[[300,360],[316,246],[110,240],[95,140],[210,130]],"def":[[264,296],[268,213],[126,205],[114,123],[208,115]],"open":1,"zone":[330,114]},
+  {"off":[[200,370],[85,210],[315,235],[300,135],[165,135]],"def":[[200,312],[154,298],[294,201],[282,119],[171,119]],"open":2,"zone":[198,212]},
+  {"off":[[200,370],[140,183],[85,235],[70,129],[208,117]],"def":[[182,304],[160,154],[115,177],[108,136],[206,91]],"open":2,"zone":[243,223]},
+  {"off":[[160,355],[300,235],[82,145],[315,130],[212,92]],"def":[[148,307],[282,201],[106,118],[294,115],[210,74]],"open":1,"zone":[177,206]},
+  {"off":[[240,355],[101,261],[231,190],[172,74],[205,125]],"def":[[233,299],[131,250],[200,204],[187,56],[204,111]],"open":1,"zone":[68,103]},
+  {"off":[[289,297],[139,164],[186,268],[297,178],[215,130]],"def":[[195,227],[163,158],[262,233],[285,145],[212,115]],"open":2,"zone":[82,235]},
+  {"off":[[300,350],[335,220],[112,260],[67,145],[313,123]],"def":[[230,307],[289,236],[132,229],[89,122],[298,90]],"open":1,"zone":[209,126]},
+];
+let layoutOrder=[], layoutPos=0;
+function nextLayoutIndex(){
+  if(layoutPos>=layoutOrder.length){
+    layoutOrder=LAYOUTS.map((_,i)=>i);
+    for(let i=layoutOrder.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[layoutOrder[i],layoutOrder[j]]=[layoutOrder[j],layoutOrder[i]];}
+    layoutPos=0;
+  }
+  return layoutOrder[layoutPos++];
+}
+
+function setupScene(){
+  if(CUT_CFG[currentLesson]){ setupSceneCut(); return; }
+  const L = forcedLayout || LAYOUTS[nextLayoutIndex()];
+  forcedLayout = null;
+  teamPlayers=L.off.map((p,i)=>({x:p[0],y:p[1],hasBall:i===0,home:{x:p[0],y:p[1]},role:i,vx:0,vy:0}));
+  defs=L.def.map((p,i)=>({x:p[0],y:p[1],mark:i,slack:(i===L.open)}));
+  openMateIdx=L.open;
+  plannedZone={x:L.zone[0],y:L.zone[1],r:40};
+  me=teamPlayers[0]; me.hasBall=true;
+  defender=defs[0];
+  mate=teamPlayers[openMateIdx];
+  ball={x:me.x,y:me.y, flying:false, holder:'me', fx:0,fy:0, fromX:0,fromY:0, t:0,total:1, to:null, immuneDefs:[]};
+  targetZone=null; arrow=null; stepState='hasBall';
+}
+let openMateIdx=1, plannedZone=null, forcedLayout=null;
+
+/* ---------- CUT lessons (V-cut / Backdoor / Screen): I'm WITHOUT the ball.
+   Shared flow: run to the DECOY point → sharp burst to the ZONE → receive → shoot.
+   off[0]=me (no ball), off[1]=mate (ball). defense: 'chase' (marker hunts me)
+   or 'deny' (marker sits between me and the ball, overplaying the pass). ---------- */
+const CUT_CFG={
+  vcut:{
+    defense:'chase',
+    layouts:[
+      {off:[[110,235],[200,355],[300,250],[310,140],[200,120]],def:[[122,213],[200,330],[284,226],[295,127],[200,102]],decoy:[128,150],zone:[82,280]},
+      {off:[[290,235],[200,355],[100,250],[90,140],[200,120]],def:[[278,213],[200,330],[116,226],[105,127],[200,102]],decoy:[272,150],zone:[318,280]},
+      {off:[[100,295],[230,360],[310,240],[300,130],[165,130]],def:[[112,272],[230,334],[295,217],[286,118],[167,112]],decoy:[115,195],zone:[52,310]},
+    ],
+    coach:{
+      intro:'<b>Шаг 1.</b> Мяч у партнёра. <b>Беги к кольцу</b> 🎯 — уводи своего защитника за собой!',
+      introFree:'Сделай V-рывок сам: к кольцу → резкая смена направления → приём в зоне!',
+      cut:'<b>Шаг 2.</b> Теперь <b>резко наружу</b> — рывок в зону 🎯! Смена направления даст ускорение.',
+      cutFree:'Резко наружу — в зону! 🎯',
+      glued:'Защитник догнал! <b>Ещё один резкий рывок</b> — оторвись в зоне.',
+      receive:'<b>Шаг 3.</b> Лови пас — ты оторвался!',
+      timeout:'Слишком долго! Действуй решительнее: к кольцу — и резко в зону.'},
+    demo:[
+      {dur:2.2, txt:'Мяч у партнёра, а тебя <b>плотно держит защитник</b>. Просто так пас не получить.'},
+      {dur:2.2, txt:'<b>Шаг 1.</b> Беги к кольцу — защитник побежит за тобой!'},
+      {dur:2.2, txt:'<b>Шаг 2.</b> <b>Резко смени направление</b> — рывок наружу, в зону 🎯! Защитник не успевает развернуться.'},
+      {dur:1.8, txt:'<b>Шаг 3.</b> Ты открыт — получай пас и бросай!'},
+      {dur:1.6, txt:'Это <b>V-рывок</b>: туда-обратно остриём, как буква V. Так открываются без мяча.'},
+    ]},
+  backdoor:{
+    defense:'deny',
+    layouts:[
+      {off:[[290,225],[200,355],[105,245],[90,135],[155,120]],def:[[274,248],[200,330],[118,222],[103,124],[157,103]],decoy:[262,285],zone:[252,108]},
+      {off:[[110,225],[200,355],[295,245],[310,135],[245,120]],def:[[126,248],[200,330],[282,222],[297,124],[243,103]],decoy:[138,285],zone:[148,108]},
+    ],
+    coach:{
+      intro:'<b>Шаг 1.</b> Защитник <b>перекрывает пас</b> — встал между тобой и мячом. Шагни <b>к мячу</b> 🎯, потяни его выше!',
+      introFree:'Бэкдор: шаг к мячу → резко за спину защитнику, к кольцу!',
+      cut:'<b>Шаг 2.</b> А теперь <b>за спину ему</b> — рывок к кольцу 🎯!',
+      cutFree:'За спину — к кольцу! 🎯',
+      glued:'Он успевает! Дёрнись ещё раз к мячу — и снова <b>резко за спину</b>.',
+      receive:'<b>Шаг 3.</b> Пас мимо защитника — лови и забивай!',
+      timeout:'Слишком долго! Шаг к мячу — и сразу резко за спину, к кольцу.'},
+    demo:[
+      {dur:2.2, txt:'Смотри: защитник встал <b>между тобой и мячом</b> — перекрывает передачу. Обычный пас не пройдёт.'},
+      {dur:2.0, txt:'<b>Шаг 1.</b> Шагни <b>к мячу</b> — защитник потянется ещё выше.'},
+      {dur:2.2, txt:'<b>Шаг 2.</b> И резко — <b>за спину ему</b>, к кольцу! 🎯 Это «бэкдор».'},
+      {dur:1.8, txt:'<b>Шаг 3.</b> Партнёр отдаёт мимо защитника — лови и забивай!'},
+      {dur:1.6, txt:'Перекрывают слишком плотно? <b>Режь за спину</b> — защитник сам тебе помог.'},
+    ]},
+  screen:{
+    defense:'chase',
+    layouts:[
+      {off:[[300,250],[200,355],[215,215],[95,240],[110,130]],def:[[287,228],[200,330],[230,196],[108,218],[121,118]],decoy:[224,234],zone:[160,160]},
+      {off:[[100,250],[200,355],[185,215],[305,240],[290,130]],def:[[113,228],[200,330],[170,196],[292,218],[279,118]],decoy:[176,234],zone:[240,160]},
+    ],
+    coach:{
+      intro:'<b>Шаг 1.</b> Партнёр поставил <b>заслон</b> (стенку). Беги <b>вплотную к нему</b> 🎯 — плечом к плечу!',
+      introFree:'Используй заслон: пробеги вплотную к партнёру-стенке → защитник застрянет → рывок в зону!',
+      cut:'<b>Шаг 2.</b> Защитник врезался в заслон! <b>Рывок в зону</b> 🎯 — ты свободен.',
+      cutFree:'Защитник застрял — рывок в зону! 🎯',
+      glued:'Прошёл сквозь? Вернись к заслону и <b>пройди ещё плотнее</b> — впритирку!',
+      receive:'<b>Шаг 3.</b> Получай пас — заслон сработал!',
+      timeout:'Слишком долго! Беги впритирку к заслону — и сразу рывок в зону.'},
+    demo:[
+      {dur:2.2, txt:'Твой партнёр встал <b>заслоном</b> — как стенка на пути защитника. Используй её!'},
+      {dur:2.2, txt:'<b>Шаг 1.</b> Беги <b>вплотную к заслону</b> — плечом к плечу!'},
+      {dur:2.2, txt:'<b>Шаг 2.</b> Защитник <b>врезается в заслон</b> и застревает. Рывок в зону! 🎯'},
+      {dur:1.8, txt:'<b>Шаг 3.</b> Ты свободен — получай пас и бросай!'},
+      {dur:1.6, txt:'<b>Заслон</b> — командная хитрость: партнёр стеной отрезает твоего защитника.'},
+    ]},
+};
+let cutIdxByLesson={}, decoyPoint=null;
+function setupSceneCut(){
+  const cfg=CUT_CFG[currentLesson];
+  const idx=(cutIdxByLesson[currentLesson]||0);
+  const L=cfg.layouts[idx % cfg.layouts.length];
+  cutIdxByLesson[currentLesson]=idx+1;
+  teamPlayers=L.off.map((p,i)=>({x:p[0],y:p[1],hasBall:i===1,home:{x:p[0],y:p[1]},role:i,vx:0,vy:0}));
+  defs=L.def.map((p,i)=>({x:p[0],y:p[1],mark:i,slack:false}));
+  openMateIdx=1;
+  me=teamPlayers[0]; me.hasBall=false;
+  mate=teamPlayers[1]; mate.hasBall=true;
+  defender=defs[0];                          // my marker — the one I must beat
+  decoyPoint={x:L.decoy[0],y:L.decoy[1],r:26};
+  plannedZone={x:L.zone[0],y:L.zone[1],r:40};
+  ball={x:mate.x,y:mate.y, flying:false, holder:'mate', fx:0,fy:0, fromX:0,fromY:0, t:0,total:1, to:null, immuneDefs:[]};
+  targetZone=null; arrow=null; stepState='decoy';
+}
+
+/* the open cut target — taken from the verified layout */
+function computeCutTarget(){
+  return {x:plannedZone.x, y:plannedZone.y, r:plannedZone.r};
+}
+
+/* ---------- pass mechanics ---------- */
+function launchPass(fromObj, toKey, immuneDefs){
+  const to = toKey==='mate'?mate:me;
+  ball.flying=true; ball.holder=null; ball.to=toKey;
+  ball.fromX=fromObj.x; ball.fromY=fromObj.y;
+  ball.x=fromObj.x; ball.y=fromObj.y;
+  ball.t=0; ball.total=Math.max(1,dist(fromObj,to));
+  // these defenders can't steal THIS pass (e.g. the presser, or a beaten backdoor marker)
+  ball.immuneDefs = immuneDefs==null ? [] : (Array.isArray(immuneDefs)?immuneDefs:[immuneDefs]);
+  const a=Math.atan2(to.y-fromObj.y, to.x-fromObj.x);
+  const speed=300; ball.fx=Math.cos(a)*speed; ball.fy=Math.sin(a)*speed;
+  fromObj.hasBall=false;
+}
+const PASS_TOLERANCE = Math.cos(32*Math.PI/180);  // ±32° cone snaps to the mate
+function tryPlayerPass(){
+  if(!me.hasBall) return false;
+  let dx=passJoy.relx, dy=passJoy.rely;
+  const m=Math.hypot(dx,dy);
+  if(m<0.3) return false;              // too weak a flick — no pass
+  dx/=m; dy/=m;
+  // is the mate within the aim cone? if so, snap the pass to him (assisted aim)
+  const vx=mate.x-me.x, vy=mate.y-me.y, vm=Math.hypot(vx,vy)||1;
+  const aimDot=(vx/vm)*dx+(vy/vm)*dy;
+  if(aimDot>=PASS_TOLERANCE){
+    launchPass(me,'mate', presserIdx);   // accurate, homes to the mate; presser can't steal it
+    return true;
+  }
+  // off-target: ball flies straight where aimed (may sail out of bounds = turnover)
+  ball.flying=true; ball.holder=null; ball.to='mate';
+  ball.fromX=me.x; ball.fromY=me.y; ball.x=me.x; ball.y=me.y;
+  ball.t=0; ball.total=1; ball.immuneDefs=presserIdx>=0?[presserIdx]:[];
+  const speed=320; ball.fx=dx*speed; ball.fy=dy*speed;
+  me.hasBall=false;
+  return true;
+}
+
+/* ---------- DEMO (animated showcase) ---------- */
+const demoPlan=[
+  {dur:2.2, txt:'На площадке 5 на 5. Видишь: одного партнёра <b>защитник держит слабо</b> — рядом с ним пустое место у кольца.'},
+  {dur:1.8, txt:'<b>Шаг 1.</b> Отдай пас этому открытому партнёру →'},
+  {dur:2.2, txt:'<b>Шаг 2.</b> Резко поменяй направление (это даёт <b>рывок</b>) и беги в <b>пустую зону</b> 🎯 — где нет защитника!'},
+  {dur:1.8, txt:'<b>Шаг 3.</b> Получи пас обратно — ты открыт у кольца!'},
+  {dur:1.6, txt:'Бежим туда, потому что там <b>никто не охраняет</b>. Это и есть «отдал-открылся».'},
+];
+function startDemo(){
+  phase='demo'; setBadge('ПОКАЗ'); setupScene();
+  demoT=0; demoStep=0;
+  const plan = CUT_CFG[currentLesson] ? CUT_CFG[currentLesson].demo : demoPlan;
+  showCoach(plan[0].txt);
+  targetZone=computeCutTarget();
+  document.getElementById('skipDemoBtn').classList.remove('hidden');
+}
+function updateDemo(dt){
+  demoT+=dt;
+  const cfg=CUT_CFG[currentLesson];
+  const planArr = cfg ? cfg.demo : demoPlan;
+  const plan=planArr[demoStep];
+  if(cfg){
+    // CUT showcase: decoy run with live defense, sharp cut, then pass
+    if(demoStep===1){ // run to the decoy
+      arrow={x1:me.x,y1:me.y,x2:decoyPoint.x,y2:decoyPoint.y};
+      me.x=lerp(me.x,decoyPoint.x,Math.min(1,dt*2.6));
+      me.y=lerp(me.y,decoyPoint.y,Math.min(1,dt*2.6));
+    } else if(demoStep===2){ // sharp cut to the zone
+      arrow={x1:me.x,y1:me.y,x2:targetZone.x,y2:targetZone.y};
+      me.x=lerp(me.x,targetZone.x,Math.min(1,dt*3.4));
+      me.y=lerp(me.y,targetZone.y,Math.min(1,dt*3.4));
+    } else if(demoStep===3){ // pass to me (past the beaten marker)
+      arrow={x1:mate.x,y1:mate.y,x2:me.x,y2:me.y};
+      if(!ball.flying && mate.hasBall) launchPass(mate,'me');
+    }
+    // my marker plays his scheme during the demo (shows WHY the move works)
+    if(demoStep>=1 && demoStep<=2){
+      let tx,ty;
+      if(cfg.defense==='deny'){
+        const vx=mate.x-me.x, vy=mate.y-me.y, vm=Math.hypot(vx,vy)||1;
+        tx=me.x+vx/vm*26; ty=me.y+vy/vm*26;
+      } else { tx=me.x; ty=me.y; }
+      const f=Math.min(1,dt*1.6);
+      defender.x=clampX(lerp(defender.x,tx,f));
+      defender.y=clampY(lerp(defender.y,ty,f));
+      separatePlayers();   // the screen physically blocks him — visible in the demo
+    }
+  } else {
+    // give-and-go showcase
+    if(demoStep===1){ // pass to mate
+      if(!ball.flying && me.hasBall) launchPass(me,'mate');
+      arrow={x1:me.x,y1:me.y,x2:mate.x,y2:mate.y};
+    } else if(demoStep===2){ // cut to open
+      arrow={x1:me.x,y1:me.y,x2:targetZone.x,y2:targetZone.y};
+      me.x=lerp(me.x,targetZone.x,Math.min(1,dt*3));
+      me.y=lerp(me.y,targetZone.y,Math.min(1,dt*3));
+    } else if(demoStep===3){ // return pass
+      arrow={x1:mate.x,y1:mate.y,x2:me.x,y2:me.y};
+      if(!ball.flying && mate.hasBall) launchPass(mate,'me');
+    }
+  }
+  // ball physics for the demo (no fails, just fly + catch)
+  if(ball.flying){
+    ball.x+=ball.fx*dt; ball.y+=ball.fy*dt;
+    const to=ball.to==='mate'?mate:me;
+    if(dist(ball,to)<16){ ball.flying=false; ball.holder=ball.to; to.hasBall=true; ball.x=to.x; ball.y=to.y; }
+  }
+  if(demoT>=plan.dur){
+    demoT=0; demoStep++;
+    if(demoStep>=planArr.length){ startTrain(); return; }
+    showCoach(planArr[demoStep].txt);
+    if(demoStep===1){ /* reset positions for clean pass */ }
+  }
+}
+
+/* ---------- TRAIN (guided, passive defense) ---------- */
+let runFails=0;   // turnovers during the current train/test run (drives the star rating)
+function startTrain(){
+  document.getElementById('skipDemoBtn').classList.add('hidden');
+  phase='train'; setBadge('ТРЕНИРОВКА'); setupScene();
+  reps=0; repsNeeded=2; stars=0; setStars(0); runFails=0;
+  beginRep(true);
+}
+function startTest(){
+  phase='test'; setBadge('ЗАЧЁТ'); setupScene();
+  reps=0; repsNeeded=3; stars=0; setStars(0); runFails=0;
+  beginRep(false);
+}
+let guided=true;
+function beginRep(isGuided){
+  guided=isGuided;
+  setupScene();
+  if(CUT_CFG[currentLesson]){
+    const cfg=CUT_CFG[currentLesson];
+    guardT=0; repLocked=false; presserIdx=-1; dashT=0; dashCooldown=0; shotT=0; netT=0;
+    repStartT=performance.now();
+    showCoach(isGuided ? cfg.coach.intro : cfg.coach.introFree);
+    return;
+  }
+  stepState='hasBall'; guardT=0; repLocked=false; presserIdx=-1; dashT=0; dashCooldown=0; shotT=0; netT=0;
+  repStartT=performance.now();
+  if(isGuided) showCoach('<b>Шаг 1.</b> Оторвись от защитника и отдай пас: потяни <b>правый</b> джойстик в сторону партнёра и отпусти.');
+  else showCoach('Сделай give-and-go сам! Уйди от опеки → пас → рывок в пустую зону → приём.');
+}
+
+/* ---------- main update ---------- */
+function update(dt){
+  if((phase==='train'||phase==='test') && !repLocked){
+    // --- movement with a "change-of-direction burst" (reward sharp cuts) ---
+    const inLen=Math.hypot(moveJoy.dx,moveJoy.dy);
+    if(inLen>0.2){
+      const ndx=moveJoy.dx/inLen, ndy=moveJoy.dy/inLen;
+      if(me._ldx!==undefined){
+        const dot=ndx*me._ldx+ndy*me._ldy;     // 1=same dir, -1=reverse
+        if(dot<0.3 && dashCooldown<=0){          // turned ~>70° → explode out of the cut
+          dashT=0.32; dashCooldown=0.7;
+        }
+      }
+      me._ldx=ndx; me._ldy=ndy;
+    }
+    if(dashT>0) dashT-=dt;
+    if(dashCooldown>0) dashCooldown-=dt;
+    const baseSpd=148, dashSpd=300;
+    const spd = dashT>0 ? dashSpd : baseSpd;
+    me.x=clampX(me.x+moveJoy.dx*spd*dt);
+    me.y=clampY(me.y+moveJoy.dy*spd*dt);
+    if(me.hasBall){ ball.x=me.x; ball.y=me.y; }
+
+    const isTest=(phase==='test');
+
+    // --- DEFENDERS ---
+    if(CUT_CFG[currentLesson]){
+      // CUT lessons: MY defender plays live — chases me ('chase') or overplays the
+      // passing lane between me and the ball ('deny'). Everyone else holds.
+      const cfg=CUT_CFG[currentLesson];
+      const chaseSpd = isTest ? 2.4 : 1.7;
+      for(let i=0;i<defs.length;i++){
+        const d=defs[i], man=teamPlayers[d.mark];
+        if(i===0 && stepState!=='receiving' && stepState!=='shooting'){
+          let tx,ty;
+          if(cfg.defense==='deny'){
+            // sit between me and the ball, a step off me toward the mate
+            const vx=mate.x-me.x, vy=mate.y-me.y, vm=Math.hypot(vx,vy)||1;
+            tx=me.x+vx/vm*26; ty=me.y+vy/vm*26;
+          } else {
+            // chase me, slightly hoop-side
+            tx=me.x+(HOOP.x-me.x)*0.06; ty=me.y+(HOOP.y-me.y)*0.06;
+          }
+          const f=Math.min(1,dt*chaseSpd);
+          d.x=clampX(lerp(d.x,tx,f)); d.y=clampY(lerp(d.y,ty,f));
+        } else {
+          const tx=man.x+(HOOP.x-man.x)*0.12, ty=man.y+(HOOP.y-man.y)*0.12;
+          const f=Math.min(1,dt*0.3);
+          d.x=clampX(lerp(d.x,tx,f)); d.y=clampY(lerp(d.y,ty,f));
+        }
+      }
+    } else {
+      // lesson 1 (give-and-go): defenders barely move, so the task is MOVING into the open
+      // zone — not shaking off a chaser. Later tactics use livelier defense.
+      const almostStatic = (currentLesson==='gng');
+      const spd = almostStatic ? (isTest ? 0.6 : 0.35) : (isTest ? 3.0 : 1.8);
+      for(let i=0;i<defs.length;i++){
+        const d=defs[i], man=teamPlayers[d.mark];
+        let tightness = 0.12;                 // how far hoop-side the defender sits
+        if(d.slack){
+          // the slacking defender helps off / sags toward the ball → leaves a gap.
+          // he only recovers if his man actually gets the ball and is open.
+          if(teamPlayers[d.mark].hasBall || stepState==='receiving'){
+            tightness=0.12; // recover & contest once the ball comes
+          } else {
+            // sag toward mid: this is what opens the cutting lane
+            const sx=lerp(man.x, me.x, 0.45), sy=lerp(man.y, HOOP.y, -0.05);
+            const f=Math.min(1,dt*spd*0.7);
+            d.x=clampX(lerp(d.x,sx,f)); d.y=clampY(lerp(d.y,sy,f));
+            continue;
+          }
+        }
+        const tx=man.x+(HOOP.x-man.x)*tightness;
+        const ty=man.y+(HOOP.y-man.y)*tightness;
+        const f=Math.min(1,dt*spd);
+        d.x=clampX(lerp(d.x,tx,f)); d.y=clampY(lerp(d.y,ty,f));
+      }
+    }
+    // --- TEAMMATES (off-ball, not me): hold spacing near home ---
+    for(let i=1;i<teamPlayers.length;i++){
+      const p=teamPlayers[i];
+      // the open teammate stays put after the first pass to return the ball
+      if(i===openMateIdx && stepState!=='hasBall') continue;
+      p.x=clampX(lerp(p.x,p.home.x,Math.min(1,dt*1.2)));
+      p.y=clampY(lerp(p.y,p.home.y,Math.min(1,dt*1.2)));
+    }
+
+    // --- collision: players can't overlap; they push apart on contact ---
+    separatePlayers();
+    // keep the ball with whoever holds it
+    if(ball.holder==='mate'){ ball.x=mate.x; ball.y=mate.y; }
+    else if(ball.holder==='me'){ ball.x=me.x; ball.y=me.y; }
+
+    // --- pass on right-joystick release ---
+    if(passJoy.released){
+      passJoy.released=false;
+      if(stepState==='hasBall' && me.hasBall){
+        const aimOK = tryPlayerPass();   // returns true if a pass was launched
+        if(aimOK){
+          guardT=0;
+          stepState='cutting';
+          targetZone=computeCutTarget();
+          if(guided) showCoach('<b>Шаг 2.</b> Пас отдан! Теперь <b>беги</b> в зону 🎯 — резко смени направление, чтобы оторваться.');
+        }
+      }
+    }
+
+    // --- PRESSURE & STEAL TIMER (3–5s window to pass) ---
+    // find the defender stuck to the ballhandler; he pressures but CANNOT intercept the pass
+    if(stepState==='hasBall' && me.hasBall){
+      let pi=-1, pd=R*2+(isTest?12:18);
+      for(let i=0;i<defs.length;i++){const dd=dist(defs[i],me); if(dd<pd){pd=dd;pi=i;}}
+      presserIdx=pi;
+      stealLimit = isTest ? 3.0 : 4.5;   // 3s in test, 4.5s in training
+      if(pi>=0){
+        guardT+=dt;
+        if(guided && guardT>stealLimit*0.55){
+          showCoach('Защитник прижал! У тебя есть пара секунд — <b>отдай пас</b> (правый джойстик), он не сможет его перехватить.');
+        }
+        if(guardT>=stealLimit){ failRep('Долго держал мяч — защитник выбил! Отдавай пас быстрее.'); return; }
+      } else {
+        guardT=Math.max(0,guardT-dt*1.5);
+      }
+    } else {
+      presserIdx=-1;
+      guardT=Math.max(0,guardT-dt*2);
+    }
+
+    // --- mate returns the ball once I'm in the open zone with a clean lane ---
+    if(stepState==='cutting' && mate.hasBall && targetZone){
+      const inZone = dist(me,targetZone)<targetZone.r;
+      const laneGap = returnLaneGap();
+      const need = isTest ? 22 : 28;
+      if(inZone && laneGap>need){
+        // mate's own defender can't intercept the return pass either
+        let mp=-1, mpd=R*2+16;
+        for(let i=0;i<defs.length;i++){const dd=dist(defs[i],mate); if(dd<mpd){mpd=dd;mp=i;}}
+        launchPass(mate,'me', mp);   // mate's defender can't intercept the return pass
+        stepState='receiving';
+        if(guided) showCoach('<b>Шаг 3.</b> Лови обратный пас — ты открылся в пустой зоне!');
+      } else if(inZone && laneGap<=need && guided){
+        showCoach('Защитник режет линию! Сместись вбок в зоне — открой чистый угол к мячу.');
+      }
+    }
+
+    // --- CUT-lesson state machine: decoy run → sharp cut → receive ---
+    if(CUT_CFG[currentLesson]){
+      const cfg=CUT_CFG[currentLesson];
+      if(stepState==='decoy' && decoyPoint){
+        if(dist(me,decoyPoint)<decoyPoint.r){
+          stepState='cutout';
+          targetZone=computeCutTarget();
+          if(navigator.vibrate) navigator.vibrate(20);
+          showCoach(guided ? cfg.coach.cut : cfg.coach.cutFree);
+        }
+      } else if(stepState==='cutout' && mate.hasBall && targetZone){
+        const inZone = dist(me,targetZone)<targetZone.r;
+        const sep = dist(defender,me);                 // separation from my marker
+        const sepNeed = R*2+14;
+        // backdoor: the pass goes PAST the beaten marker, so once I'm goal-side of him
+        // he no longer counts as blocking the lane (and can't intercept).
+        const beaten = cfg.defense==='deny' && dist(me,HOOP) < dist(defender,HOOP)-10;
+        let laneGap=1e9;
+        {
+          let mp=-1, mpd=R*2+16;
+          for(let i=0;i<defs.length;i++){const dd=dist(defs[i],mate); if(dd<mpd){mpd=dd;mp=i;}}
+          for(let i=0;i<defs.length;i++){
+            if(i===mp) continue;
+            if(beaten && i===0) continue;              // beaten marker is behind the play
+            const d=defs[i];
+            if(dist(d,me)<R*2+6 || dist(d,mate)<R*2+6) continue;
+            laneGap=Math.min(laneGap, distPointSeg(d, mate, me));
+          }
+        }
+        const sepOK = sep>sepNeed || beaten;
+        if(inZone && sepOK && laneGap>(isTest?22:26)){
+          let mp=-1, mpd=R*2+16;
+          for(let i=0;i<defs.length;i++){const dd=dist(defs[i],mate); if(dd<mpd){mpd=dd;mp=i;}}
+          const immune = beaten ? [mp,0] : [mp];
+          launchPass(mate,'me', immune);
+          stepState='receiving';
+          if(guided) showCoach(cfg.coach.receive);
+        } else if(inZone && !sepOK && guided){
+          showCoach(cfg.coach.glued);
+        }
+      }
+      // timeout: don't dawdle
+      if((stepState==='decoy'||stepState==='cutout') && (performance.now()-repStartT)/1000>22){
+        failRep(cfg.coach.timeout);
+        return;
+      }
+    }
+  }
+
+  // ball flight
+  if(ball.flying && !repLocked){
+    ball.x+=ball.fx*dt; ball.y+=ball.fy*dt;
+    const to = ball.to==='mate'?mate:(ball.to==='hoop'?HOOP:me);
+
+    // --- FAIL 2: a defender intercepts the pass — only if truly IN THE BALL'S PATH ---
+    // (a shot at the hoop can't be intercepted)
+    if((phase==='train'||phase==='test') && ball.to!=='hoop'){
+      const bspeed=Math.hypot(ball.fx,ball.fy)||1;
+      const bdx=ball.fx/bspeed, bdy=ball.fy/bspeed;   // ball travel direction
+      for(let i=0;i<defs.length;i++){
+        if(ball.immuneDefs && ball.immuneDefs.includes(i)) continue; // immune for this pass
+        const d=defs[i];
+        const tox=d.x-ball.x, toy=d.y-ball.y, td=Math.hypot(tox,toy)||1;
+        // the defender must be ahead of the ball (ball moving toward him) AND near the line
+        const ahead=(tox/td)*bdx+(toy/td)*bdy;        // >0 means ball heading his way
+        const lineDist=distPointSeg(d, {x:ball.x,y:ball.y}, to); // distance to remaining path
+        if(ahead>0.3 && lineDist<14 && td<22){
+          ball.flying=false;
+          failRep('Перехват! Защитник стоял на пути паса. Отдавай, когда путь чист.');
+          return;
+        }
+      }
+    }
+
+    // --- the SHOT lands in the hoop ---
+    if(ball.to==='hoop'){
+      if(dist(ball,HOOP)<12){
+        ball.flying=false; ball.x=HOOP.x; ball.y=HOOP.y;
+        netT=0.6;                              // net splash animation
+        if(navigator.vibrate) navigator.vibrate([30,40,30]);
+        completeRep();
+      }
+      // (a shot can't go out of bounds — it's aimed at the hoop)
+    }
+    // caught? — reception is an AREA, not a point (kid-friendly)
+    else {
+      const catchR = (ball.to==='me') ? 26 : 22;
+      if(dist(ball,to)<catchR){
+        ball.flying=false; ball.holder=ball.to; to.hasBall=true;
+        ball.x=to.x; ball.y=to.y;
+        if(ball.to==='me' && (phase==='train'||phase==='test')){
+          // caught in the open zone → finish with a SHOT (the payoff of the give-and-go)
+          stepState='shooting'; shotT=0.45;
+          if(guided) showCoach('Открытый бросок — <b>лёгкие два очка!</b> 🏀');
+        }
+      }
+      // --- FAIL 3: ball went out of bounds (bad aim) ---
+      else if(ball.x<PAD+2||ball.x>W-PAD-2||ball.y<PAD+2||ball.y>H-PAD-2){
+        ball.flying=false;
+        if(phase==='train'||phase==='test'){
+          failRep('Мяч ушёл за пределы площадки — целься точнее в партнёра.');
+          return;
+        }
+      }
+    }
+  }
+
+  // --- auto-shot shortly after catching in the zone ---
+  if(stepState==='shooting' && !repLocked){
+    shotT-=dt;
+    if(shotT<=0 && me.hasBall){
+      me.hasBall=false; ball.holder=null;
+      ball.flying=true; ball.to='hoop';
+      ball.fromX=me.x; ball.fromY=me.y;
+      ball.x=me.x; ball.y=me.y; ball.immuneDefs=[];
+      const a=Math.atan2(HOOP.y-me.y, HOOP.x-me.x);
+      const sp=260; ball.fx=Math.cos(a)*sp; ball.fy=Math.sin(a)*sp;
+    }
+  }
+  if(netT>0) netT-=dt;
+
+  if(flashMsg){flashT+=dt; if(flashT>1.2)flashMsg=null;}
+}
+
+// gap in the return passing lane (mate -> me), ignoring the mate's own presser
+// and defenders hugging either endpoint
+function returnLaneGap(){
+  let matePresser=-1, mpd=R*2+16;
+  for(let i=0;i<defs.length;i++){const dd=dist(defs[i],mate); if(dd<mpd){mpd=dd;matePresser=i;}}
+  let gap=1e9;
+  for(let i=0;i<defs.length;i++){
+    if(i===matePresser) continue;
+    const d=defs[i];
+    if(dist(d,me)<R*2+6 || dist(d,mate)<R*2+6) continue;
+    gap=Math.min(gap, distPointSeg(d, mate, me));
+  }
+  return gap;
+}
+function distPointSeg(p,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,L2=dx*dx+dy*dy||1;
+  let t=((p.x-a.x)*dx+(p.y-a.y)*dy)/L2; t=Math.max(0,Math.min(1,t));
+  return Math.hypot(p.x-(a.x+t*dx), p.y-(a.y+t*dy));
+}
+
+// soft body collision so players never overlap and gently push apart
+function separatePlayers(){
+  const all=[...teamPlayers, ...defs];
+  const MIN=R*2+4;                 // minimum centre-to-centre distance
+  for(let iter=0;iter<2;iter++){   // a couple of passes for stability
+    for(let a=0;a<all.length;a++){
+      for(let b=a+1;b<all.length;b++){
+        const pa=all[a], pb=all[b];
+        let dx=pb.x-pa.x, dy=pb.y-pa.y, d=Math.hypot(dx,dy);
+        if(d<MIN){
+          if(d<0.01){dx=Math.random()-0.5;dy=Math.random()-0.5;d=0.01;}
+          const push=(MIN-d)/2;
+          const ux=dx/d, uy=dy/d;
+          pa.x=clampX(pa.x-ux*push); pa.y=clampY(pa.y-uy*push);
+          pb.x=clampX(pb.x+ux*push); pb.y=clampY(pb.y+uy*push);
+        }
+      }
+    }
+  }
+  // keep the ball glued to me while I hold it (separation may have nudged me)
+  if(me && me.hasBall){ ball.x=me.x; ball.y=me.y; }
+}
+
+function completeRep(){
+  if(repLocked) return;
+  repLocked=true;
+  reps++;
+  // --- scoring: base + speed bonus + (test = harder, worth more) ---
+  const sec=(performance.now()-repStartT)/1000;
+  const base = (phase==='test') ? 150 : 100;
+  const speedBonus = Math.max(0, Math.round((10-sec)*8));   // faster = more, 0 after 10s
+  const streakBonus = STATS.streak*10;                       // reward consecutive successes
+  const pts = base + speedBonus + streakBonus;
+  STATS.totalPoints += pts;
+  STATS.reps++; STATS.success++;
+  STATS.streak++; STATS.bestStreak=Math.max(STATS.bestStreak, STATS.streak);
+  STATS.bestRep=Math.max(STATS.bestRep, pts);
+  pushHistory({lesson:currentLesson, ok:true, pts, phase, t:Date.now()});
+  if(navigator.vibrate) navigator.vibrate(35);
+  flash('Молодец! +'+pts,'#19c2a0');
+  updateScoreHud();
+  stars=Math.min(3, Math.round((reps/repsNeeded)*3));
+  setStars(stars);
+  if(reps>=repsNeeded){
+    setTimeout(()=>{ phase==='train'? finishTrain() : finishTest(); }, 700);
+  } else {
+    setTimeout(()=> beginRep(guided), 850);
+  }
+}
+function failRep(reason){
+  if(repLocked) return;
+  repLocked=true;
+  runFails++;
+  STATS.reps++; STATS.fails++; STATS.streak=0;
+  pushHistory({lesson:currentLesson, ok:false, pts:0, phase, t:Date.now()});
+  if(navigator.vibrate) navigator.vibrate(80);
+  flash('Потеря!','#ff3b5c');
+  updateScoreHud();
+  showCoach('❌ '+reason);
+  setTimeout(()=> beginRep(guided), 1300);
+}
+function finishTrain(){
+  hideCoach();
+  if(navigator.vibrate) navigator.vibrate([40,60,40]);
+  showDone('Тренировка пройдена!', 3, 'Ты освоил движение с подсказками. Теперь зачёт — без подсказок.', ()=>startTest());
+}
+function finishTest(){
+  hideCoach();
+  // honest stars: 3 = clean run, 2 = 1–2 turnovers, 1 = more
+  const earned = runFails===0 ? 3 : (runFails<=2 ? 2 : 1);
+  progress[currentLesson]=Math.max(progress[currentLesson]||0, earned);
+  if(navigator.vibrate) navigator.vibrate([40,60,40,60,80]);
+  const msg = earned===3
+    ? 'Безупречно — ни одной потери! Двигаться без мяча — это и есть командная игра.'
+    : (earned===2
+      ? 'Урок пройден, но были потери ('+runFails+'). Сыграй ещё раз без ошибок — будет 3 звезды!'
+      : 'Пройдено с трудом ('+runFails+' потерь). Потренируйся ещё — меньше держи мяч и следи за линией паса.');
+  showDone('Урок пройден! 🏀', earned, msg, ()=>toMenu());
+}
+
+let doneAction=null;
+function showDone(title, st, text, action){
+  phase='done';
+  document.getElementById('doneTitle').textContent=title;
+  let s='';for(let i=0;i<3;i++)s+= i<st?'★':'☆';
+  document.getElementById('doneStars').textContent=s;
+  document.getElementById('doneText').textContent=text;
+  doneAction=action;
+  doneScreen.classList.remove('hidden');
+}
+
+/* ---------- draw ---------- */
+function drawCourt(){
+  ctx.clearRect(0,0,W,H);
+  // surround
+  ctx.fillStyle='#0f0b08';ctx.fillRect(0,0,W,H);
+
+  const cx=W/2;
+  const L=PAD, Rr=W-PAD, T=PAD, B=H-PAD;     // court inner bounds
+  const keyW=96, keyBottom=H*0.40;            // free-throw line y (logic anchor)
+  const arcR=210;                             // 3pt radius — sits well beyond the FT circle
+  const COL='#1f4fa3';                        // Warriors blue line color
+
+  // --- hardwood floor with horizontal plank grain ---
+  ctx.save();
+  ctx.beginPath();ctx.rect(L,T,Rr-L,B-T);ctx.clip();
+  // base wood gradient
+  const wg=ctx.createLinearGradient(0,T,0,B);
+  wg.addColorStop(0,'#e8c79a'); wg.addColorStop(.5,'#e0bd8d'); wg.addColorStop(1,'#d8b27e');
+  ctx.fillStyle=wg; ctx.fillRect(L,T,Rr-L,B-T);
+  // plank lines (horizontal) + subtle color variation per board
+  for(let y=T; y<B; y+=6){
+    const shade = 0.05 + 0.05*Math.abs(Math.sin(y*0.7));
+    ctx.strokeStyle='rgba(120,80,40,'+shade+')';
+    ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(L,y+0.5);ctx.lineTo(Rr,y+0.5);ctx.stroke();
+  }
+  // faint long grain streaks
+  ctx.strokeStyle='rgba(150,100,55,.06)';ctx.lineWidth=1;
+  for(let y=T+3;y<B;y+=3){ctx.beginPath();ctx.moveTo(L,y);ctx.lineTo(Rr,y);ctx.stroke();}
+  ctx.restore();
+
+  // --- all court lines in Warriors blue ---
+  ctx.strokeStyle=COL; ctx.lineJoin='round';
+
+  // boundary
+  ctx.lineWidth=4; ctx.strokeRect(L,T,Rr-L,B-T);
+
+  // half-court line at the bottom edge with center-circle arc
+  ctx.lineWidth=3;
+  ctx.beginPath();ctx.moveTo(L,B);ctx.lineTo(Rr,B);ctx.stroke();
+  ctx.beginPath();ctx.arc(cx,B,40,Math.PI,Math.PI*2);ctx.stroke();
+
+  // --- painted key (yellow), Warriors style ---
+  ctx.save();
+  ctx.fillStyle='rgba(255,199,0,.78)';
+  ctx.fillRect(cx-keyW/2,T,keyW,keyBottom-T);
+  ctx.restore();
+  ctx.lineWidth=3;
+  ctx.strokeRect(cx-keyW/2,T,keyW,keyBottom-T);
+
+  // lane hash marks (the little ticks along the key)
+  ctx.lineWidth=2;
+  const hy=[T+34,T+50,T+66,T+82];
+  for(const y of hy){
+    ctx.beginPath();ctx.moveTo(cx-keyW/2-6,y);ctx.lineTo(cx-keyW/2,y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx+keyW/2,y);ctx.lineTo(cx+keyW/2+6,y);ctx.stroke();
+  }
+
+  // free-throw circle: solid half toward the hoop, dashed half away
+  ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(cx,keyBottom,46,Math.PI,Math.PI*2);ctx.stroke(); // top (toward hoop) solid
+  ctx.setLineDash([7,6]);
+  ctx.beginPath();ctx.arc(cx,keyBottom,46,0,Math.PI);ctx.stroke();         // bottom dashed
+  ctx.setLineDash([]);
+
+  // --- three-point line: straight corridors + arc ---
+  ctx.lineWidth=3;
+  const cornerX=46;                          // distance of straight 3pt lines from sideline
+  const straightToY = HOOP.y + Math.sqrt(Math.max(0,arcR*arcR-(cx-(L+cornerX))*(cx-(L+cornerX))));
+  // left corner straight
+  ctx.beginPath();ctx.moveTo(L+cornerX,T);ctx.lineTo(L+cornerX,straightToY);ctx.stroke();
+  // right corner straight
+  ctx.beginPath();ctx.moveTo(Rr-cornerX,T);ctx.lineTo(Rr-cornerX,straightToY);ctx.stroke();
+  // arc joining them — must sweep through the court side (downward), not over the rim
+  ctx.save();ctx.beginPath();ctx.rect(L,T,Rr-L,B-T);ctx.clip();
+  const a0=Math.atan2(straightToY-HOOP.y, (L+cornerX)-HOOP.x);   // left end ~149°
+  const a1=Math.atan2(straightToY-HOOP.y, (Rr-cornerX)-HOOP.x);  // right end ~31°
+  ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,arcR,a0,a1,true);ctx.stroke();
+  ctx.restore();
+
+  // restricted-area arc under the rim
+  ctx.lineWidth=2;
+  ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,26,0,Math.PI);ctx.stroke();
+
+  // --- backboard + rim ---
+  ctx.strokeStyle=COL;ctx.lineWidth=4;
+  ctx.beginPath();ctx.moveTo(HOOP.x-24,T+8);ctx.lineTo(HOOP.x+24,T+8);ctx.stroke();
+  ctx.strokeStyle='#666';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(HOOP.x,T+8);ctx.lineTo(HOOP.x,HOOP.y-9);ctx.stroke();
+  ctx.fillStyle='#e8821a';ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,9,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,9,0,Math.PI*2);ctx.stroke();
+}
+function drawArrow(a,color){
+  if(!a) return;
+  const ang=Math.atan2(a.y2-a.y1,a.x2-a.x1);
+  ctx.strokeStyle=color;ctx.lineWidth=4;ctx.setLineDash([9,7]);
+  ctx.beginPath();ctx.moveTo(a.x1,a.y1);ctx.lineTo(a.x2,a.y2);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=color;
+  ctx.beginPath();
+  ctx.moveTo(a.x2,a.y2);
+  ctx.lineTo(a.x2-12*Math.cos(ang-0.4),a.y2-12*Math.sin(ang-0.4));
+  ctx.lineTo(a.x2-12*Math.cos(ang+0.4),a.y2-12*Math.sin(ang+0.4));
+  ctx.closePath();ctx.fill();
+}
+function drawPlayer(p,color,label,ring){
+  if(ring){ctx.strokeStyle=ring;ctx.lineWidth=3.5;ctx.beginPath();ctx.arc(p.x,p.y,R+3,0,Math.PI*2);ctx.stroke();}
+  ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,R,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#fff';ctx.font='bold 12px Space Mono';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(label,p.x,p.y);
+}
+function draw(){
+  drawCourt();
+
+  // net splash when the shot drops
+  if(netT>0){
+    const a=netT/0.6;
+    ctx.strokeStyle='rgba(25,194,160,'+a+')';
+    ctx.lineWidth=4;
+    ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,12+(1-a)*22,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='rgba(255,210,63,'+a+')';
+    ctx.font='bold 16px Space Mono';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('+2',HOOP.x,HOOP.y-26-(1-a)*14);
+  }
+
+  // target zone (pulsing)
+  const showZoneDemo = phase==='demo' && demoStep>=2;
+  const showZonePlay = (phase==='train'||phase==='test') && stepState!=='hasBall';
+  if(targetZone && (showZoneDemo || showZonePlay)){
+    const pulse=8+Math.sin(performance.now()/200)*4;
+    ctx.strokeStyle='rgba(25,194,160,.9)';ctx.lineWidth=3;ctx.setLineDash([6,5]);
+    ctx.beginPath();ctx.arc(targetZone.x,targetZone.y,targetZone.r+pulse,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(25,194,160,.16)';
+    ctx.beginPath();ctx.arc(targetZone.x,targetZone.y,targetZone.r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#19c2a0';ctx.font='bold 16px Space Mono';ctx.fillText('🎯',targetZone.x,targetZone.y);
+  }
+
+  // running route: a straight arrow from me to the zone while I cut (makes the move obvious)
+  if((phase==='train'||phase==='test') && stepState==='cutting' && targetZone){
+    drawArrow({x1:me.x,y1:me.y,x2:targetZone.x,y2:targetZone.y}, 'rgba(25,194,160,.85)');
+  }
+
+  // CUT-lesson visuals: decoy marker + route arrows
+  if(CUT_CFG[currentLesson] && (phase==='train'||phase==='test')){
+    if(stepState==='decoy' && decoyPoint){
+      const pulse=6+Math.sin(performance.now()/180)*3;
+      ctx.strokeStyle='#ffd23f';ctx.lineWidth=3;ctx.setLineDash([6,5]);
+      ctx.beginPath();ctx.arc(decoyPoint.x,decoyPoint.y,decoyPoint.r+pulse-6,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle='#ffd23f';ctx.font='bold 13px Space Mono';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText('1',decoyPoint.x,decoyPoint.y);
+      drawArrow({x1:me.x,y1:me.y,x2:decoyPoint.x,y2:decoyPoint.y},'rgba(255,210,63,.8)');
+    }
+    if(stepState==='cutout' && targetZone){
+      drawArrow({x1:me.x,y1:me.y,x2:targetZone.x,y2:targetZone.y},'rgba(25,194,160,.85)');
+      // separation indicator: my marker glows red while he's glued to me
+      if(dist(defender,me)<R*2+14){
+        ctx.strokeStyle='rgba(255,59,92,.8)';ctx.lineWidth=3;ctx.setLineDash([4,4]);
+        ctx.beginPath();ctx.arc(defender.x,defender.y,R+6,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // guidance arrow
+  if(arrow && (phase==='demo' || (guided && (phase==='train')))) drawArrow(arrow,'#ffd23f');
+
+  // passing-lane hint during cutting
+  if((phase==='train'||phase==='test') && stepState==='cutting' && mate.hasBall){
+    const need = (phase==='test')?22:28;
+    const clear=returnLaneGap()>need;
+    ctx.strokeStyle= clear?'rgba(25,194,160,.7)':'rgba(255,84,33,.6)';
+    ctx.lineWidth=2.5;ctx.setLineDash([7,6]);
+    ctx.beginPath();ctx.moveTo(mate.x,mate.y);ctx.lineTo(me.x,me.y);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // PASS AIM indicator — while holding the ball and pulling the right stick
+  if((phase==='train'||phase==='test') && me.hasBall && passJoy.active &&
+     (Math.abs(passJoy.dx)+Math.abs(passJoy.dy))>0.25){
+    const m=Math.hypot(passJoy.dx,passJoy.dy)||1;
+    const dx=passJoy.dx/m, dy=passJoy.dy/m;
+    // would this pass reach the mate? (same cone test as the logic)
+    const vx=mate.x-me.x, vy=mate.y-me.y, vm=Math.hypot(vx,vy)||1;
+    const aimDot=(vx/vm)*dx+(vy/vm)*dy;
+    const onTarget = aimDot>=PASS_TOLERANCE;
+    const len=70;
+    const ex=me.x+dx*len, ey=me.y+dy*len;
+    // aim line
+    ctx.strokeStyle= onTarget?'#19c2a0':'#ffd23f';
+    ctx.lineWidth=4;ctx.setLineDash([2,6]);ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(me.x,me.y);ctx.lineTo(ex,ey);ctx.stroke();
+    ctx.setLineDash([]);ctx.lineCap='butt';
+    // arrow head
+    const ang=Math.atan2(dy,dx);
+    ctx.fillStyle= onTarget?'#19c2a0':'#ffd23f';
+    ctx.beginPath();ctx.moveTo(ex,ey);
+    ctx.lineTo(ex-13*Math.cos(ang-0.4),ey-13*Math.sin(ang-0.4));
+    ctx.lineTo(ex-13*Math.cos(ang+0.4),ey-13*Math.sin(ang+0.4));
+    ctx.closePath();ctx.fill();
+    // highlight the mate when locked on
+    if(onTarget){
+      ctx.strokeStyle='rgba(25,194,160,.9)';ctx.lineWidth=3;ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.arc(mate.x,mate.y,R+8,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+
+  // defenders (red)
+  for(const d of defs) drawPlayer(d,'#ff3b5c','D');
+  // demo (give-and-go): highlight the slacking defender so kids SEE who left the gap
+  if(phase==='demo' && currentLesson==='gng' && demoStep<=1 && defs[openMateIdx]){
+    const sd=defs[openMateIdx];
+    const pulse=5+Math.sin(performance.now()/170)*3;
+    ctx.strokeStyle='#ffd23f';ctx.lineWidth=3;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.arc(sd.x,sd.y,R+5+pulse,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#ffd23f';ctx.font='bold 11px Space Mono';ctx.textAlign='center';
+    ctx.fillText('отошёл!',sd.x,sd.y-R-14-pulse);
+  }
+  // teammates (blue): the open one (current pass target) gets a highlight
+  for(let i=1;i<teamPlayers.length;i++){
+    const p=teamPlayers[i];
+    drawPlayer(p,'#2b6cff', i===openMateIdx?'П':'•', p.hasBall?'#ffd23f':(i===openMateIdx?'rgba(25,194,160,.8)':null));
+  }
+  // dash trail
+  if(dashT>0){
+    const a=dashT/0.32;
+    ctx.globalAlpha=0.35*a;
+    ctx.fillStyle='#19c2a0';
+    ctx.beginPath();ctx.arc(me.x-moveJoy.dx*14,me.y-moveJoy.dy*14,R*0.9,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(me.x-moveJoy.dx*24,me.y-moveJoy.dy*24,R*0.65,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  // me on top
+  drawPlayer(me,'#19c2a0','Я','#fff');
+
+  // steal-timer ring around the player while being pressured with the ball
+  if((phase==='train'||phase==='test') && me.hasBall && guardT>0.05){
+    const frac=Math.min(1,guardT/stealLimit);
+    const danger=frac>0.6;
+    ctx.strokeStyle= danger?'#ff3b5c':'#ffd23f';
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    ctx.arc(me.x,me.y,R+9,-Math.PI/2, -Math.PI/2 + frac*Math.PI*2);
+    ctx.stroke();
+  }
+
+  // ball
+  if(ball.flying){
+    const to=ball.to==='mate'?mate:me;
+    const total=Math.hypot(to.x-ball.fromX,to.y-ball.fromY)||1;
+    const trav=Math.hypot(ball.x-ball.fromX,ball.y-ball.fromY);
+    const t=Math.min(1,trav/total);
+    const height=Math.sin(t*Math.PI);          // 0..1..0 over the flight
+    const lob=height*Math.min(46,total*0.32);   // arc height (bigger lob)
+    const rad=6+height*4;                        // ball grows near the apex
+    // ground shadow: smaller & fainter when the ball is high
+    ctx.fillStyle='rgba(0,0,0,'+(0.22-0.12*height)+')';
+    ctx.beginPath();ctx.ellipse(ball.x,ball.y,5*(1-0.4*height),2.5*(1-0.4*height),0,0,Math.PI*2);ctx.fill();
+    // the ball, lifted by the lob
+    ctx.fillStyle='#e8821a';ctx.beginPath();ctx.arc(ball.x,ball.y-lob,rad,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(120,60,10,.5)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(ball.x,ball.y-lob,rad,0,Math.PI*2);ctx.stroke();
+  } else if(ball.holder){
+    const h=ball.holder==='mate'?mate:me;
+    ctx.fillStyle='#e8821a';ctx.beginPath();ctx.arc(h.x+9,h.y-7,6,0,Math.PI*2);ctx.fill();
+  }
+
+  // joysticks
+  drawJoy(moveJoy,'#f4e3c8','БЕГ');
+  drawJoy(passJoy,'#ffd23f','ПАС');
+
+  // flash
+  if(flashMsg){const a=1-flashT/1.2;ctx.globalAlpha=Math.max(0,a);
+    ctx.fillStyle=flashColor;ctx.font='bold 26px "Archivo Black",sans-serif';ctx.textAlign='center';
+    ctx.fillText(flashMsg,W/2,H*0.5-flashT*20);ctx.globalAlpha=1;}
+}
+function drawJoy(j,color,label){
+  if(phase!=='train'&&phase!=='test') return;
+  const bx = j.side==='L'? 66 : W-66;
+  const by = H-58;
+  const base = j.active? j.base : {x:bx,y:by};
+  ctx.globalAlpha=j.active?0.9:0.32;
+  ctx.strokeStyle=color;ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(base.x,base.y,j.r,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle=color;
+  ctx.beginPath();ctx.arc(base.x+j.dx*j.r,base.y+j.dy*j.r,16,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=j.active?0.9:0.5;
+  ctx.fillStyle=color;ctx.font='bold 10px Space Mono';ctx.textAlign='center';
+  ctx.fillText(label,base.x,base.y+j.r+12);
+  ctx.globalAlpha=1;
+}
+
+/* ---------- loop ---------- */
+function loop(ts){
+  if(!running) return;
+  if(!lastT)lastT=ts; let dt=(ts-lastT)/1000; lastT=ts; if(dt>0.05)dt=0.05;
+  if(phase==='demo') updateDemo(dt);
+  else update(dt);
+  draw();
+  raf=requestAnimationFrame(loop);
+}
+function startLoop(){ if(!running){running=true;lastT=0;raf=requestAnimationFrame(loop);} }
+
+/* ---------- navigation ---------- */
+function isLocked(lv){
+  // lessons unlock in a chain: pass the previous one to open the next
+  if(lv.id==='vcut')     return !(progress.gng>0);
+  if(lv.id==='backdoor') return !(progress.vcut>0);
+  if(lv.id==='screen')   return !(progress.backdoor>0);
+  return !!lv.locked;
+}
+function buildMenu(){
+  lvlList.innerHTML='';
+  LEVELS.forEach((lv,i)=>{
+    const locked=isLocked(lv);
+    const st=progress[lv.id]||0;
+    let starStr='';for(let k=0;k<3;k++)starStr+= k<st?'★':'☆';
+    const div=document.createElement('div');
+    div.className='lvl '+(locked?'locked':'open');
+    div.innerHTML='<div class="num">'+(i+1)+'</div>'+
+      '<div class="body"><div class="t">'+lv.title+(locked?' 🔒':'')+'</div><div class="d">'+lv.tag+'</div></div>'+
+      '<div class="st">'+(locked?('пройди №'+i):starStr)+'</div>';
+    if(!locked) div.onclick=()=>openLesson(i);
+    lvlList.appendChild(div);
+  });
+}
+function toMenu(){
+  phase='menu'; setBadge('УРОК'); hideCoach(); setStars(0);
+  doneScreen.classList.add('hidden'); introScreen.classList.add('hidden');
+  document.getElementById('skipDemoBtn').classList.add('hidden');
+  statsScreen.classList.add('hidden');
+  buildMenu(); menuScreen.classList.remove('hidden');
+}
+function openLesson(i){
+  const lv=LEVELS[i];
+  currentLesson=lv.id;
+  document.getElementById('introPill').textContent='Урок '+(i+1);
+  document.getElementById('hTitle').innerHTML=lv.title+'<small>'+lv.tag+'</small>';
+  document.getElementById('introTitle').textContent=lv.title;
+  document.getElementById('introText').innerHTML=lv.intro;
+  menuScreen.classList.add('hidden');
+  introScreen.classList.remove('hidden');
+}
+document.getElementById('watchBtn').onclick=()=>{
+  introScreen.classList.add('hidden'); startDemo(); startLoop();
+};
+document.getElementById('skipIntroBtn').onclick=()=>{
+  // skip the demo entirely, go straight to training
+  introScreen.classList.add('hidden'); startTrain(); startLoop();
+};
+document.getElementById('skipDemoBtn').onclick=()=>{
+  // skip the rest of the showcase mid-play
+  if(phase==='demo') startTrain();
+};
+document.getElementById('nextBtn').onclick=()=>{ doneScreen.classList.add('hidden'); if(doneAction)doneAction(); };
+document.getElementById('menuBtn').onclick=()=>{ doneScreen.classList.add('hidden'); toMenu(); };
+
+/* ================= LAYOUT EDITOR ================= */
+const edCanvas=document.getElementById('edCanvas'), edCtx=edCanvas.getContext('2d');
+const editorScreen=document.getElementById('editorScreen');
+let edScale=1;
+// editable layout: 5 offense (0=me), 5 defenders, zone. open teammate is chosen automatically.
+let edLayout=null, edDrag=null, edOpen=1;
+let edIndex=0;   // which LAYOUTS entry we're editing; -1 = unsaved new layout
+
+function edDefaultLayout(){
+  return {
+    off:[[200,360],[95,255],[315,250],[130,150],[300,155]],
+    def:[[200,303],[230,300],[294,213],[143,131],[282,135]],
+    zone:[150,160]
+  };
+}
+// deep-copy a LAYOUTS entry into the editable structure
+function edLoadIndex(i){
+  if(i<0 || i>=LAYOUTS.length){ edIndex=-1; edLayout=edDefaultLayout(); edUpdatePos(); edRefresh(); return; }
+  edIndex=i;
+  const L=LAYOUTS[i];
+  edLayout={ off:L.off.map(p=>[p[0],p[1]]), def:L.def.map(p=>[p[0],p[1]]), zone:[L.zone[0],L.zone[1]] };
+  edUpdatePos(); edRefresh();
+}
+function edUpdatePos(){
+  const el=document.getElementById('edPos');
+  el.textContent = edIndex<0 ? ('Новая (черновик)') : ('Расстановка '+(edIndex+1)+' / '+LAYOUTS.length);
+}
+function edFit(){
+  const st=document.getElementById('edStage');
+  const aw=st.clientWidth, ah=st.clientHeight;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  edScale=Math.min(aw/W, ah/H);
+  edCanvas.style.width=(W*edScale)+'px'; edCanvas.style.height=(H*edScale)+'px';
+  edCanvas.width=Math.round(W*edScale*dpr); edCanvas.height=Math.round(H*edScale*dpr);
+  edCtx.setTransform(edScale*dpr,0,0,edScale*dpr,0,0);
+}
+function edToLogic(cx,cy){const r=edCanvas.getBoundingClientRect();return {x:(cx-r.left)/edScale,y:(cy-r.top)/edScale};}
+
+// --- validation (same principles as the verified set) ---
+function edSeg(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1;let t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(p[0]-(a[0]+t*dx),p[1]-(a[1]+t*dy));}
+function edDist(a,b){return Math.hypot(a[0]-b[0],a[1]-b[1]);}
+const ED={ZONE_FREE:52, FP:26, CUT:26, RET:24};
+function edValidate(){
+  const L=edLayout, meP=L.off[0];
+  // choose open teammate = the off-ball mate with the cleanest first-pass lane
+  let bestOpen=-1, bestClear=-1;
+  for(let i=1;i<L.off.length;i++){
+    let mind=1e9;
+    for(let k=0;k<L.def.length;k++){ if(k===i) continue; mind=Math.min(mind, edSeg(L.def[k], meP, L.off[i])); }
+    if(mind>bestClear){ bestClear=mind; bestOpen=i; }
+  }
+  edOpen=bestOpen;
+  const om=L.off[edOpen], zone=L.zone;
+  const defsNoOpen=L.def.filter((_,k)=>k!==edOpen);
+  const defsNoMine=L.def.filter((_,k)=>k!==0);
+  const firstPass = Math.min(...defsNoOpen.map(d=>edSeg(d,meP,om)));
+  let zoneFree=1e9; for(const d of L.def) zoneFree=Math.min(zoneFree, edDist(d,zone));
+  const cutLane = Math.min(...defsNoMine.map(d=>edSeg(d,meP,zone)));
+  const retPass = Math.min(...defsNoMine.map(d=>edSeg(d,om,zone)));
+  const fwd = zone[1] < meP[1]-40;
+  const checks=[
+    {k:'Первый пас (я→открытый)', v:firstPass>=ED.FP, m:firstPass.toFixed(0)},
+    {k:'Зона открыта', v:zoneFree>=ED.ZONE_FREE, m:zoneFree.toFixed(0)},
+    {k:'Маршрут я→зона чист', v:cutLane>=ED.CUT, m:cutLane.toFixed(0)},
+    {k:'Обратный пас →зона', v:retPass>=ED.RET, m:retPass.toFixed(0)},
+    {k:'Зона впереди к кольцу', v:fwd, m:fwd?'да':'нет'},
+  ];
+  const ok=checks.every(c=>c.v);
+  return {ok,checks,open:edOpen};
+}
+function edRefresh(){
+  const r=edValidate();
+  const badge=document.getElementById('edValid');
+  badge.textContent = r.ok?'✓ Валидна':'✗ Не годится';
+  badge.style.background = r.ok?'#19c2a0':'#ff3b5c';
+  badge.style.color = '#161210';
+  document.getElementById('edChecks').innerHTML =
+    r.checks.map(c=>(c.v?'✅':'❌')+' '+c.k+' <span style="color:#6b6155">('+c.m+')</span>').join('<br>');
+  edDraw();
+}
+function edDrawCourt(){
+  const ctx=edCtx, cx=W/2,L=PAD,Rr=W-PAD,T=PAD,B=H-PAD,keyW=96,keyB=H*0.40,arcR=210,COL='#1f4fa3';
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='#0f0b08'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#e0bd8d'; ctx.fillRect(L,T,Rr-L,B-T);
+  ctx.strokeStyle=COL; ctx.lineWidth=3; ctx.strokeRect(L,T,Rr-L,B-T);
+  ctx.fillStyle='rgba(255,199,0,.7)'; ctx.fillRect(cx-keyW/2,T,keyW,keyB-T);
+  ctx.strokeRect(cx-keyW/2,T,keyW,keyB-T);
+  ctx.beginPath();ctx.arc(cx,keyB,46,0,Math.PI*2);ctx.stroke();
+  ctx.save();ctx.beginPath();ctx.rect(L,T,Rr-L,B-T);ctx.clip();
+  const sy=HOOP.y+Math.sqrt(Math.max(0,arcR*arcR-(cx-(L+46))*(cx-(L+46))));
+  ctx.beginPath();ctx.moveTo(L+46,T);ctx.lineTo(L+46,sy);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(Rr-46,T);ctx.lineTo(Rr-46,sy);ctx.stroke();
+  const a0=Math.atan2(sy-HOOP.y,(L+46)-HOOP.x),a1=Math.atan2(sy-HOOP.y,(Rr-46)-HOOP.x);
+  ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,arcR,a0,a1,true);ctx.stroke();ctx.restore();
+  ctx.fillStyle='#e23b1a';ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,9,0,Math.PI*2);ctx.fill();
+}
+function edDraw(){
+  edDrawCourt();
+  const ctx=edCtx, L=edLayout;
+  // lines: first pass, cut, return
+  const meP=L.off[0], om=L.off[edOpen], z=L.zone;
+  ctx.lineWidth=3;
+  ctx.setLineDash([7,6]);
+  ctx.strokeStyle='rgba(255,210,63,.8)';     // first pass
+  ctx.beginPath();ctx.moveTo(meP[0],meP[1]);ctx.lineTo(om[0],om[1]);ctx.stroke();
+  ctx.strokeStyle='rgba(25,194,160,.9)';     // cut
+  ctx.beginPath();ctx.moveTo(meP[0],meP[1]);ctx.lineTo(z[0],z[1]);ctx.stroke();
+  ctx.strokeStyle='rgba(25,194,160,.6)';     // return
+  ctx.beginPath();ctx.moveTo(om[0],om[1]);ctx.lineTo(z[0],z[1]);ctx.stroke();
+  ctx.setLineDash([]);
+  // zone
+  ctx.fillStyle='rgba(25,194,160,.16)';ctx.beginPath();ctx.arc(z[0],z[1],38,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#19c2a0';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();ctx.arc(z[0],z[1],38,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#19c2a0';ctx.font='bold 15px Space Mono';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🎯',z[0],z[1]);
+  // defenders
+  for(const d of L.def){ ctx.fillStyle='#ff3b5c';ctx.beginPath();ctx.arc(d[0],d[1],13,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 12px Space Mono';ctx.fillText('D',d[0],d[1]); }
+  // offense
+  for(let i=0;i<L.off.length;i++){ const p=L.off[i];
+    ctx.fillStyle= i===0?'#19c2a0':'#2b6cff';
+    ctx.beginPath();ctx.arc(p[0],p[1],13,0,Math.PI*2);ctx.fill();
+    if(i===0){ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p[0],p[1],15,0,Math.PI*2);ctx.stroke();}
+    if(i===edOpen){ctx.strokeStyle='#ffd23f';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p[0],p[1],16,0,Math.PI*2);ctx.stroke();}
+    ctx.fillStyle='#fff';ctx.font='bold 12px Space Mono';ctx.fillText(i===0?'Я':(i===edOpen?'П':'•'),p[0],p[1]); }
+}
+// hit-test & drag
+function edPick(p){
+  const hit=(arr,r)=>{for(let i=0;i<arr.length;i++){if(Math.hypot(arr[i][0]-p.x,arr[i][1]-p.y)<r)return i;}return -1;};
+  if(Math.hypot(edLayout.zone[0]-p.x,edLayout.zone[1]-p.y)<22) return {type:'zone',i:0};
+  let i=hit(edLayout.off,18); if(i>=0) return {type:'off',i};
+  i=hit(edLayout.def,18); if(i>=0) return {type:'def',i};
+  return null;
+}
+function edMove(p){
+  if(!edDrag) return;
+  const x=clampX(p.x), y=clampY(p.y);
+  if(edDrag.type==='zone') edLayout.zone=[x,y];
+  else edLayout[edDrag.type][edDrag.i]=[x,y];
+  edRefresh();
+}
+edCanvas.addEventListener('touchstart',e=>{const t=e.touches[0];edDrag=edPick(edToLogic(t.clientX,t.clientY));e.preventDefault();},{passive:false});
+edCanvas.addEventListener('touchmove',e=>{const t=e.touches[0];edMove(edToLogic(t.clientX,t.clientY));e.preventDefault();},{passive:false});
+edCanvas.addEventListener('touchend',e=>{edDrag=null;e.preventDefault();},{passive:false});
+edCanvas.addEventListener('mousedown',e=>{edDrag=edPick(edToLogic(e.clientX,e.clientY));});
+edCanvas.addEventListener('mousemove',e=>{if(e.buttons)edMove(edToLogic(e.clientX,e.clientY));});
+window.addEventListener('mouseup',()=>{edDrag=null;});
+
+function openEditor(){
+  menuScreen.classList.add('hidden');
+  editorScreen.classList.remove('hidden');
+  edFit();
+  edLoadIndex( edIndex>=0 && edIndex<LAYOUTS.length ? edIndex : 0 );
+}
+function edToLayoutObj(){
+  return {
+    off:edLayout.off.map(p=>[Math.round(p[0]),Math.round(p[1])]),
+    def:edLayout.def.map(p=>[Math.round(p[0]),Math.round(p[1])]),
+    open:edOpen,
+    zone:[Math.round(edLayout.zone[0]),Math.round(edLayout.zone[1])]
+  };
+}
+function edSay(t){ document.getElementById('edValid').textContent=t; }
+document.getElementById('openEditorBtn').onclick=openEditor;
+document.getElementById('edBackBtn').onclick=()=>{ editorScreen.classList.add('hidden'); toMenu(); };
+
+document.getElementById('edPrev').onclick=()=>{
+  if(LAYOUTS.length===0){ edLoadIndex(-1); return; }
+  let i = edIndex<=0 ? LAYOUTS.length-1 : edIndex-1;
+  edLoadIndex(i);
+};
+document.getElementById('edNext').onclick=()=>{
+  if(LAYOUTS.length===0){ edLoadIndex(-1); return; }
+  let i = (edIndex<0 || edIndex>=LAYOUTS.length-1) ? 0 : edIndex+1;
+  edLoadIndex(i);
+};
+document.getElementById('edNew').onclick=()=>{
+  edIndex=-1; edLayout=edDefaultLayout(); edUpdatePos(); edRefresh();
+  edSay('Черновик');
+};
+document.getElementById('edSaveBtn').onclick=()=>{
+  const r=edValidate();
+  if(!r.ok){ edSay('✗ Сначала исправь'); return; }
+  const obj=edToLayoutObj();
+  if(edIndex>=0 && edIndex<LAYOUTS.length){
+    LAYOUTS[edIndex]=obj;                 // overwrite the one we're editing (incl. built-ins)
+    edSay('✓ Сохранено #'+(edIndex+1));
+  } else {
+    LAYOUTS.push(obj); edIndex=LAYOUTS.length-1;   // new layout appended
+    edSay('✓ Добавлено #'+(edIndex+1));
+  }
+  layoutOrder=[]; layoutPos=0;            // reshuffle next time
+  edUpdatePos();
+};
+document.getElementById('edDelBtn').onclick=()=>{
+  if(edIndex<0 || LAYOUTS.length<=1){ edSay('Нельзя удалить'); return; }
+  LAYOUTS.splice(edIndex,1);
+  layoutOrder=[]; layoutPos=0;
+  edLoadIndex(Math.min(edIndex, LAYOUTS.length-1));
+  edSay('Удалено');
+};
+document.getElementById('edPlayBtn').onclick=()=>{
+  const r=edValidate();
+  if(!r.ok){ edSay('✗ Сначала исправь'); return; }
+  currentLesson='gng';                       // editor layouts are give-and-go scenes
+  forcedLayout=edToLayoutObj();
+  editorScreen.classList.add('hidden');
+  startTrain(); startLoop();
+};
+// robust clipboard copy: try modern API, fall back to a temp textarea + execCommand
+function edCopy(text, okMsg){
+  let done=(ok)=>{ edSay(ok?okMsg:'✗ Не удалось — см. консоль'); };
+  // fallback method that works inside most embedded/iframe contexts
+  function legacy(){
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=text;
+      ta.style.position='fixed'; ta.style.top='0'; ta.style.left='0';
+      ta.style.opacity='0'; ta.setAttribute('readonly','');
+      document.body.appendChild(ta);
+      ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+      const ok=document.execCommand('copy');
+      document.body.removeChild(ta);
+      done(ok);
+    }catch(e){ done(false); }
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(()=>done(true), legacy);
+  } else { legacy(); }
+  console.log(text);
+}
+document.getElementById('edCopyBtn').onclick=()=>{
+  edCopy(JSON.stringify(edToLayoutObj()), '✓ JSON скопирован');
+};
+document.getElementById('edCopyAllBtn').onclick=()=>{
+  edCopy(JSON.stringify(LAYOUTS), '✓ Набор скопирован ('+LAYOUTS.length+')');
+};
+window.addEventListener('resize',()=>{ if(!editorScreen.classList.contains('hidden')){ edFit(); edDraw(); } });
+
+/* ================= STATS SCREEN ================= */
+const statsScreen=document.getElementById('statsScreen');
+function statCard(label,value,color){
+  return '<div style="background:#15110d;border:2px solid #2a241d;border-radius:12px;padding:10px 14px;min-width:90px;text-align:center;">'+
+    '<div style="font-size:20px;font-weight:800;color:'+(color||'#ffd23f')+'">'+value+'</div>'+
+    '<div style="font-size:11px;color:#9b8f80;margin-top:2px;">'+label+'</div></div>';
+}
+function renderStats(){
+  const acc = STATS.reps? Math.round(STATS.success/STATS.reps*100):0;
+  document.getElementById('statsCards').innerHTML =
+    statCard('Очки всего', STATS.totalPoints, '#19c2a0')+
+    statCard('Рекорд за реп', STATS.bestRep)+
+    statCard('Серия', STATS.streak)+
+    statCard('Лучшая серия', STATS.bestStreak)+
+    statCard('Точность', acc+'%')+
+    statCard('Попыток', STATS.reps);
+  // progress per lesson
+  document.getElementById('statsProgress').innerHTML =
+    LEVELS.map(l=>{
+      const st=progress[l.id]||0;
+      const stars='★'.repeat(st)+'☆'.repeat(3-st);
+      const lock=l.locked?' <span style="color:#6b6155">(скоро)</span>':'';
+      return '<div>'+l.title+' — <span style="color:#ffd23f">'+stars+'</span>'+lock+'</div>';
+    }).join('');
+  // history
+  const h=STATS.history;
+  if(h.length===0){
+    document.getElementById('statsHistory').innerHTML='<div style="color:#6b6155">Пока нет попыток — сыграй урок!</div>';
+  } else {
+    document.getElementById('statsHistory').innerHTML = h.map(e=>{
+      const time=new Date(e.t).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+      const ph = e.phase==='test'?'зачёт':'трен.';
+      const res = e.ok? '<span style="color:#19c2a0">✓ +'+e.pts+'</span>' : '<span style="color:#ff3b5c">✗ потеря</span>';
+      return '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #221d17;padding:3px 0;">'+
+        '<span>'+time+' · '+lessonTitle(e.lesson)+' · '+ph+'</span>'+res+'</div>';
+    }).join('');
+  }
+}
+function openStats(){
+  menuScreen.classList.add('hidden');
+  statsScreen.classList.remove('hidden');
+  renderStats();
+}
+document.getElementById('openStatsBtn').onclick=openStats;
+document.getElementById('statsBackBtn').onclick=()=>{ statsScreen.classList.add('hidden'); toMenu(); };
+document.getElementById('statsCopyBtn').onclick=()=>{
+  const data=JSON.stringify({points:STATS.totalPoints,bestRep:STATS.bestRep,bestStreak:STATS.bestStreak,
+    reps:STATS.reps,success:STATS.success,fails:STATS.fails,progress,history:STATS.history});
+  edCopy(data, '✓ Статистика скопирована');   // reuse the robust copy helper
+};
+
+document.getElementById('hExit').onclick=()=>{ toMenu(); };
+fit(); buildMenu(); toMenu();
+})();
+</script>
+</body>
+</html>
