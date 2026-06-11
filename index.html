@@ -97,7 +97,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
         <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
       </div>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v7</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v8</span></p>
      </div>
     </div>
 
@@ -357,7 +357,7 @@ let guardT=0;         // how long the ballhandler has been pressured
 let stealLimit=3.0;   // current steal threshold (3–5s); also the pass window
 let presserIdx=-1;    // which defender is "stuck" to the ballhandler (can't intercept his pass)
 let dashT=0, dashCooldown=0;  // change-of-direction burst
-let shotT=0, netT=0;          // auto-shot delay & net splash animation
+let netT=0;                   // net splash animation
 let repLocked=false;  // true while a fail/success animation resolves
 let raf=0,lastT=0,running=false;
 let flashMsg=null, flashT=0, flashColor='#19c2a0';
@@ -619,17 +619,55 @@ function computeCutTarget(){
 /* ---------- pass mechanics ---------- */
 function launchPass(fromObj, toKey, immuneDefs){
   const to = toKey==='mate'?mate:me;
+  // lead pass: when the ball comes back TO ME while I'm running, aim slightly ahead
+  // of my movement ("на ход") so I catch it in stride instead of stopping.
+  let ax=to.x, ay=to.y;
+  if(toKey==='me'){
+    const il=Math.hypot(moveJoy.dx,moveJoy.dy);
+    if(il>0.25){
+      const flight=dist(fromObj,to)/300;                 // ball travel time
+      const lead=Math.min(36, 148*flight*0.55);          // a touch ahead, capped
+      ax=clampX(to.x+moveJoy.dx/il*lead);
+      ay=clampY(to.y+moveJoy.dy/il*lead);
+    }
+  }
   ball.flying=true; ball.holder=null; ball.to=toKey;
   ball.fromX=fromObj.x; ball.fromY=fromObj.y;
   ball.x=fromObj.x; ball.y=fromObj.y;
-  ball.t=0; ball.total=Math.max(1,dist(fromObj,to));
+  ball.t=0; ball.total=Math.max(1,Math.hypot(ax-fromObj.x,ay-fromObj.y));
   // these defenders can't steal THIS pass (e.g. the presser, or a beaten backdoor marker)
   ball.immuneDefs = immuneDefs==null ? [] : (Array.isArray(immuneDefs)?immuneDefs:[immuneDefs]);
-  const a=Math.atan2(to.y-fromObj.y, to.x-fromObj.x);
+  const a=Math.atan2(ay-fromObj.y, ax-fromObj.x);
   const speed=300; ball.fx=Math.cos(a)*speed; ball.fy=Math.sin(a)*speed;
   fromObj.hasBall=false;
 }
 const PASS_TOLERANCE = Math.cos(32*Math.PI/180);  // ±32° cone snaps to the mate
+const SHOT_TOLERANCE = Math.cos(30*Math.PI/180);  // ±30° cone toward the hoop = it drops
+function tryPlayerShot(){
+  if(!me.hasBall) return false;
+  let dx=passJoy.relx, dy=passJoy.rely;
+  const m=Math.hypot(dx,dy);
+  if(m<0.3) return false;              // too weak a flick — no shot
+  dx/=m; dy/=m;
+  const vx=HOOP.x-me.x, vy=HOOP.y-me.y, vm=Math.hypot(vx,vy)||1;
+  const aimDot=(vx/vm)*dx+(vy/vm)*dy;
+  me.hasBall=false; ball.holder=null; ball.flying=true;
+  ball.fromX=me.x; ball.fromY=me.y; ball.x=me.x; ball.y=me.y;
+  ball.t=0; ball.total=1; ball.immuneDefs=[];
+  if(aimDot>=SHOT_TOLERANCE){
+    // on target: the shot arcs into the hoop
+    ball.to='hoop';
+    const a=Math.atan2(HOOP.y-me.y, HOOP.x-me.x);
+    const sp=260; ball.fx=Math.cos(a)*sp; ball.fy=Math.sin(a)*sp;
+    stepState='shooting';
+  } else {
+    // off target: a brick — flies where aimed, no one catches it
+    ball.to='miss';
+    const sp=280; ball.fx=dx*sp; ball.fy=dy*sp;
+    stepState='shooting';
+  }
+  return true;
+}
 function tryPlayerPass(){
   if(!me.hasBall) return false;
   let dx=passJoy.relx, dy=passJoy.rely;
@@ -759,12 +797,12 @@ function beginRep(isGuided){
   setupScene();
   if(CUT_CFG[currentLesson]){
     const cfg=CUT_CFG[currentLesson];
-    guardT=0; repLocked=false; presserIdx=-1; dashT=0; dashCooldown=0; shotT=0; netT=0;
+    guardT=0; repLocked=false; presserIdx=-1; dashT=0; dashCooldown=0; netT=0;
     repStartT=performance.now();
     showCoach(isGuided ? cfg.coach.intro : cfg.coach.introFree);
     return;
   }
-  stepState='hasBall'; guardT=0; repLocked=false; presserIdx=-1; dashT=0; dashCooldown=0; shotT=0; netT=0;
+  stepState='hasBall'; guardT=0; repLocked=false; presserIdx=-1; dashT=0; dashCooldown=0; netT=0;
   repStartT=performance.now();
   if(isGuided) showCoach('<b>Шаг 1.</b> Оторвись от защитника и отдай пас: потяни <b>правый</b> джойстик в сторону партнёра и отпусти.');
   else showCoach('Сделай give-and-go сам! Уйди от опеки → пас → рывок в пустую зону → приём.');
@@ -874,12 +912,14 @@ function update(dt){
           targetZone=computeCutTarget();
           if(guided) showCoach('<b>Шаг 2.</b> Пас отдан! Теперь <b>беги</b> в зону 🎯 — резко смени направление, чтобы оторваться.');
         }
+      } else if(stepState==='shootAim' && me.hasBall){
+        if(tryPlayerShot()) guardT=0;
       }
     }
 
-    // --- PRESSURE & STEAL TIMER (3–5s window to pass) ---
+    // --- PRESSURE & STEAL TIMER (3–5s window to pass / to shoot) ---
     // find the defender stuck to the ballhandler; he pressures but CANNOT intercept the pass
-    if(stepState==='hasBall' && me.hasBall){
+    if((stepState==='hasBall'||stepState==='shootAim') && me.hasBall){
       let pi=-1, pd=R*2+(isTest?12:18);
       for(let i=0;i<defs.length;i++){const dd=dist(defs[i],me); if(dd<pd){pd=dd;pi=i;}}
       presserIdx=pi;
@@ -887,9 +927,16 @@ function update(dt){
       if(pi>=0){
         guardT+=dt;
         if(guided && guardT>stealLimit*0.55){
-          showCoach('Защитник прижал! У тебя есть пара секунд — <b>отдай пас</b> (правый джойстик), он не сможет его перехватить.');
+          showCoach(stepState==='shootAim'
+            ? 'Защитник накрывает! <b>Бросай быстрее</b> — правый джойстик в кольцо 🏀.'
+            : 'Защитник прижал! У тебя есть пара секунд — <b>отдай пас</b> (правый джойстик), он не сможет его перехватить.');
         }
-        if(guardT>=stealLimit){ failRep('Долго держал мяч — защитник выбил! Отдавай пас быстрее.'); return; }
+        if(guardT>=stealLimit){
+          failRep(stepState==='shootAim'
+            ? 'Долго целился — защитник накрыл бросок! Бросай быстрее.'
+            : 'Долго держал мяч — защитник выбил! Отдавай пас быстрее.');
+          return;
+        }
       } else {
         guardT=Math.max(0,guardT-dt*1.5);
       }
@@ -967,11 +1014,11 @@ function update(dt){
   // ball flight
   if(ball.flying && !repLocked){
     ball.x+=ball.fx*dt; ball.y+=ball.fy*dt;
-    const to = ball.to==='mate'?mate:(ball.to==='hoop'?HOOP:me);
+    const to = ball.to==='mate'?mate:(ball.to==='hoop'?HOOP:(ball.to==='miss'?null:me));
 
     // --- FAIL 2: a defender intercepts the pass — only if truly IN THE BALL'S PATH ---
-    // (a shot at the hoop can't be intercepted)
-    if((phase==='train'||phase==='test') && ball.to!=='hoop'){
+    // (a shot at the hoop or a brick can't be intercepted)
+    if((phase==='train'||phase==='test') && ball.to!=='hoop' && ball.to!=='miss'){
       const bspeed=Math.hypot(ball.fx,ball.fy)||1;
       const bdx=ball.fx/bspeed, bdy=ball.fy/bspeed;   // ball travel direction
       for(let i=0;i<defs.length;i++){
@@ -997,7 +1044,17 @@ function update(dt){
         if(navigator.vibrate) navigator.vibrate([30,40,30]);
         completeRep();
       }
-      // (a shot can't go out of bounds — it's aimed at the hoop)
+      // (an on-target shot can't go out of bounds)
+    }
+    // --- a BRICK: flew where aimed, nobody's there ---
+    else if(ball.to==='miss'){
+      if(ball.x<PAD+2||ball.x>W-PAD-2||ball.y<PAD+2||ball.y>H-PAD-2){
+        ball.flying=false;
+        if(phase==='train'||phase==='test'){
+          failRep('Промах! Целься правым джойстиком точно в кольцо 🏀.');
+          return;
+        }
+      }
     }
     // caught? — reception is an AREA, not a point (kid-friendly)
     else {
@@ -1006,9 +1063,10 @@ function update(dt){
         ball.flying=false; ball.holder=ball.to; to.hasBall=true;
         ball.x=to.x; ball.y=to.y;
         if(ball.to==='me' && (phase==='train'||phase==='test')){
-          // caught in the open zone → finish with a SHOT (the payoff of the give-and-go)
-          stepState='shooting'; shotT=0.45;
-          if(guided) showCoach('Открытый бросок — <b>лёгкие два очка!</b> 🏀');
+          // caught in the open zone → YOU take the shot: aim with the right stick
+          stepState='shootAim';
+          if(guided) showCoach('<b>Бросай!</b> Потяни <b>правый</b> джойстик в сторону кольца 🏀 и отпусти.');
+          else showCoach('Бросай! Правый джойстик → кольцо 🏀');
         }
       }
       // --- FAIL 3: ball went out of bounds (bad aim) ---
@@ -1019,19 +1077,6 @@ function update(dt){
           return;
         }
       }
-    }
-  }
-
-  // --- auto-shot shortly after catching in the zone ---
-  if(stepState==='shooting' && !repLocked){
-    shotT-=dt;
-    if(shotT<=0 && me.hasBall){
-      me.hasBall=false; ball.holder=null;
-      ball.flying=true; ball.to='hoop';
-      ball.fromX=me.x; ball.fromY=me.y;
-      ball.x=me.x; ball.y=me.y; ball.immuneDefs=[];
-      const a=Math.atan2(HOOP.y-me.y, HOOP.x-me.x);
-      const sp=260; ball.fx=Math.cos(a)*sp; ball.fy=Math.sin(a)*sp;
     }
   }
   if(netT>0) netT-=dt;
@@ -1367,15 +1412,18 @@ function draw(){
     ctx.beginPath();ctx.moveTo(mate.x,mate.y);ctx.lineTo(me.x,me.y);ctx.stroke();ctx.setLineDash([]);
   }
 
-  // PASS AIM indicator — while holding the ball and pulling the right stick
+  // AIM indicator — while holding the ball and pulling the right stick.
+  // In 'hasBall' it aims the PASS at the mate; in 'shootAim' it aims the SHOT at the hoop.
   if((phase==='train'||phase==='test') && me.hasBall && passJoy.active &&
      (Math.abs(passJoy.dx)+Math.abs(passJoy.dy))>0.25){
     const m=Math.hypot(passJoy.dx,passJoy.dy)||1;
     const dx=passJoy.dx/m, dy=passJoy.dy/m;
-    // would this pass reach the mate? (same cone test as the logic)
-    const vx=mate.x-me.x, vy=mate.y-me.y, vm=Math.hypot(vx,vy)||1;
+    const shooting = (stepState==='shootAim');
+    const tgt = shooting ? HOOP : mate;
+    const tol = shooting ? SHOT_TOLERANCE : PASS_TOLERANCE;
+    const vx=tgt.x-me.x, vy=tgt.y-me.y, vm=Math.hypot(vx,vy)||1;
     const aimDot=(vx/vm)*dx+(vy/vm)*dy;
-    const onTarget = aimDot>=PASS_TOLERANCE;
+    const onTarget = aimDot>=tol;
     const len=70;
     const ex=me.x+dx*len, ey=me.y+dy*len;
     // aim line
@@ -1390,10 +1438,14 @@ function draw(){
     ctx.lineTo(ex-13*Math.cos(ang-0.4),ey-13*Math.sin(ang-0.4));
     ctx.lineTo(ex-13*Math.cos(ang+0.4),ey-13*Math.sin(ang+0.4));
     ctx.closePath();ctx.fill();
-    // highlight the mate when locked on
+    // highlight the target when locked on: mate ring, or the hoop glowing
     if(onTarget){
       ctx.strokeStyle='rgba(25,194,160,.9)';ctx.lineWidth=3;ctx.setLineDash([4,4]);
-      ctx.beginPath();ctx.arc(mate.x,mate.y,R+8,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      ctx.beginPath();ctx.arc(tgt.x,tgt.y,(shooting?16:R+8),0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    } else if(shooting){
+      // not lined up yet: show the hoop in warning red so the kid corrects the aim
+      ctx.strokeStyle='rgba(255,59,92,.8)';ctx.lineWidth=3;ctx.setLineDash([3,5]);
+      ctx.beginPath();ctx.arc(HOOP.x,HOOP.y,16,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
     }
   }
 
