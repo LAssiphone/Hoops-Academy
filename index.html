@@ -97,7 +97,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
         <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
       </div>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v10</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v11</span></p>
      </div>
     </div>
 
@@ -148,6 +148,7 @@
       <div id="leaderList" style="width:100%;display:flex;flex-direction:column;gap:6px;"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px;">
         <button class="go" id="leaderBackBtn" style="font-size:14px;padding:10px 18px">← Меню</button>
+        <button class="go ghost" id="leaderCheckBtn" style="font-size:13px;padding:10px 16px">🔧 Проверка</button>
         <button class="go ghost" id="leaderClearBtn" style="font-size:13px;padding:10px 16px">Очистить</button>
       </div>
      </div>
@@ -317,36 +318,75 @@ function updateProfileBtn(){
   b.textContent = p ? (p.avatar+' '+DB.active) : '👤 Игрок';
 }
 
-/* ---------- Supabase: global online leaderboard (optional) ----------
-   The anon key is PUBLIC by design — its rights are limited by row-level-security
-   policies (read + insert only). Until url/anon are filled in, the game quietly
-   falls back to the device-local leaderboard. */
+/* ---------- Supabase: global online leaderboard ----------
+   Both keys are PUBLIC by design (rights limited by RLS to read+insert).
+   New Supabase projects may have legacy JWT keys disabled, so we try the new
+   publishable key first, fall back to the legacy anon JWT, and remember which works. */
 const SUPABASE={
   url:'https://vveatfpoeutabnniedwr.supabase.co',
-  anon:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZWF0ZnBvZXV0YWJubmllZHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDM3NTksImV4cCI6MjA5Njc3OTc1OX0.tUhEG7BvzdUtPnaLXMTBLv3ioI1OVAteUfG0Jh4s9fQ'
+  keys:[
+    'sb_publishable_Dh7GyHasQeqyTUKwiteFtg_210t8KPW',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZWF0ZnBvZXV0YWJubmllZHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDM3NTksImV4cCI6MjA5Njc3OTc1OX0.tUhEG7BvzdUtPnaLXMTBLv3ioI1OVAteUfG0Jh4s9fQ'
+  ]
 };
-const sbOn=()=> !!(SUPABASE.url && SUPABASE.anon);
+let sbKeyIdx=-1;            // which key worked (-1 = not known yet)
+let sbLastErr=null;         // {status, body} of the last failed call — for diagnostics
+const sbOn=()=> !!(SUPABASE.url && SUPABASE.keys.length);
+function sbHeaders(k){
+  const h={'apikey':k,'Content-Type':'application/json'};
+  if(k.indexOf('eyJ')===0) h['Authorization']='Bearer '+k;   // JWT keys also go in Bearer
+  return h;
+}
+async function sbCall(path, opts){
+  // try the remembered key, else probe each until one succeeds
+  const order = sbKeyIdx>=0 ? [sbKeyIdx] : SUPABASE.keys.map((_,i)=>i);
+  for(const i of order){
+    try{
+      const r=await fetch(SUPABASE.url+path, Object.assign({}, opts, {
+        headers:Object.assign(sbHeaders(SUPABASE.keys[i]), (opts&&opts.headers)||{})
+      }));
+      if(r.ok){ sbKeyIdx=i; sbLastErr=null; return r; }
+      let body=''; try{ body=await r.text(); }catch(e){}
+      sbLastErr={status:r.status, body:body.slice(0,200), key:i};
+      // 401/403 = key problem → try the next key; other errors won't change per key
+      if(r.status!==401 && r.status!==403) return null;
+    }catch(e){
+      sbLastErr={status:0, body:String(e&&e.message||e).slice(0,200), key:i};
+    }
+  }
+  return null;
+}
 async function sbSubmitRun(e){
   if(!sbOn()) return false;
-  try{
-    const r=await fetch(SUPABASE.url+'/rest/v1/arcade_runs',{
-      method:'POST',
-      headers:{'apikey':SUPABASE.anon,'Authorization':'Bearer '+SUPABASE.anon,
-               'Content-Type':'application/json','Prefer':'return=minimal'},
-      body:JSON.stringify({name:e.name, avatar:e.avatar, score:e.score,
-                           reps:e.reps, streak:e.streak, diff:e.diff})
-    });
-    return r.ok;
-  }catch(err){ return false; }
+  const r=await sbCall('/rest/v1/arcade_runs',{
+    method:'POST',
+    headers:{'Prefer':'return=minimal'},
+    body:JSON.stringify({name:e.name, avatar:e.avatar, score:e.score,
+                         reps:e.reps, streak:e.streak, diff:e.diff})
+  });
+  return !!r;
 }
 async function sbFetchTop(limit){
   if(!sbOn()) return null;
-  try{
-    const r=await fetch(SUPABASE.url+'/rest/v1/arcade_runs?select=name,avatar,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),
-      {headers:{'apikey':SUPABASE.anon,'Authorization':'Bearer '+SUPABASE.anon}});
-    if(!r.ok) return null;
-    return await r.json();
-  }catch(err){ return null; }
+  const r=await sbCall('/rest/v1/arcade_runs?select=name,avatar,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),{method:'GET'});
+  if(!r) return null;
+  try{ return await r.json(); }catch(e){ return null; }
+}
+// human-readable explanation of the last Supabase error — shown by the 🔧 check
+function sbExplain(){
+  if(!sbLastErr) return 'Ошибок не зафиксировано.';
+  const e=sbLastErr;
+  let hint='';
+  if(e.status===401||e.status===403){
+    hint='Ключ не принят. В Supabase: Settings → API — проверь, что ключи из этого же проекта; если используешь легаси-ключи, включи «Legacy API keys».';
+  } else if(e.status===404 || (e.body&&e.body.indexOf('42P01')>=0)){
+    hint='Таблица arcade_runs не найдена — SQL не выполнен в ЭТОМ проекте. Открой SQL Editor нужного проекта и выполни скрипт ещё раз.';
+  } else if(e.body && e.body.indexOf('42501')>=0){
+    hint='Политики RLS не пускают запись/чтение — выполни в SQL Editor две строки create policy из скрипта.';
+  } else if(e.status===0){
+    hint='Сетевая ошибка (нет интернета или запрос заблокирован).';
+  } else hint='См. текст ошибки ниже.';
+  return 'HTTP '+e.status+' (ключ #'+(e.key+1)+')\n'+hint+'\n\n'+(e.body||'');
 }
 function lessonTitle(id){ const l=LEVELS.find(x=>x.id===id); return l?l.title:id; }
 function pushHistory(entry){
@@ -2002,7 +2042,10 @@ function renderLeaders(){
     el.innerHTML='<div style="color:#9b8f80;font-size:12px;">Загрузка…</div>';
     sbFetchTop(20).then(rows=>{
       if(leaderTab!=='world') return;          // user switched tabs meanwhile
-      if(!rows){ el.innerHTML='<div style="color:#ff8a3d;font-size:12px;">Не удалось загрузить — проверь интернет и попробуй ещё раз.</div>'; return; }
+      if(!rows){
+        el.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">Не удалось загрузить.\n\n'+escHtml(sbExplain())+'</div>';
+        return;
+      }
       if(rows.length===0){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Пока пусто — стань первым в мире!</div>'; return; }
       el.innerHTML=rows.map((e,i)=>{
         const d=e.created_at? new Date(e.created_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) : '';
@@ -2027,6 +2070,17 @@ document.getElementById('ldTabWorld').onclick=()=>{ leaderTab='world'; renderLea
 document.getElementById('ldTabLocal').onclick=()=>{ leaderTab='local'; renderLeaders(); };
 document.getElementById('openLeaderBtn').onclick=openLeaders;
 document.getElementById('leaderBackBtn').onclick=()=>{ leaderScreen.classList.add('hidden'); toMenu(); };
+document.getElementById('leaderCheckBtn').onclick=async ()=>{
+  const el=document.getElementById('leaderList');
+  el.innerHTML='<div style="color:#9b8f80;font-size:12px;">Проверяю соединение с базой…</div>';
+  sbKeyIdx=-1; sbLastErr=null;                  // re-probe both keys from scratch
+  const rows=await sbFetchTop(1);
+  if(rows){
+    el.innerHTML='<div style="color:#19c2a0;font-size:12px;white-space:pre-wrap;">✓ Соединение работает (ключ #'+(sbKeyIdx+1)+').\nЗаписей в базе: '+(rows.length? 'есть' : 'пока нет — сыграй Аркаду!')+'</div>';
+  } else {
+    el.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">✗ Соединения нет.\n\n'+escHtml(sbExplain())+'</div>';
+  }
+};
 document.getElementById('leaderClearBtn').onclick=()=>{
   if(!storageOK) return;
   if(confirm('Очистить таблицу лидеров устройства?')){ DB.leaders=[]; saveDB(); renderLeaders(); }
