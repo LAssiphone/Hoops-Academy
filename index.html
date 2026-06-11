@@ -97,7 +97,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
         <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
       </div>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v8</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v9</span></p>
      </div>
     </div>
 
@@ -140,7 +140,11 @@
     <div class="overlay hidden" id="leaderScreen">
      <div class="overlay-inner" style="max-width:480px;width:100%;">
       <h1>🏆 Лидеры</h1>
-      <p style="font-size:12px;color:#9b8f80;margin:2px 0 10px;">Лучшие забеги в Аркаде на этом устройстве.</p>
+      <div style="display:flex;gap:6px;justify-content:center;margin:4px 0 8px;">
+        <button class="go ghost" id="ldTabWorld" style="font-size:13px;padding:8px 16px">🌍 Общий</button>
+        <button class="go ghost" id="ldTabLocal" style="font-size:13px;padding:8px 16px">📱 Устройство</button>
+      </div>
+      <p id="leaderNote" style="font-size:12px;color:#9b8f80;margin:0 0 10px;">Лучшие забеги в Аркаде.</p>
       <div id="leaderList" style="width:100%;display:flex;flex-direction:column;gap:6px;"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px;">
         <button class="go" id="leaderBackBtn" style="font-size:14px;padding:10px 18px">← Меню</button>
@@ -311,6 +315,35 @@ function updateProfileBtn(){
   if(!storageOK){ b.textContent='👤 Гость'; return; }
   const p=DB.active && DB.profiles[DB.active];
   b.textContent = p ? (p.avatar+' '+DB.active) : '👤 Игрок';
+}
+
+/* ---------- Supabase: global online leaderboard (optional) ----------
+   The anon key is PUBLIC by design — its rights are limited by row-level-security
+   policies (read + insert only). Until url/anon are filled in, the game quietly
+   falls back to the device-local leaderboard. */
+const SUPABASE={ url:'', anon:'' };
+const sbOn=()=> !!(SUPABASE.url && SUPABASE.anon);
+async function sbSubmitRun(e){
+  if(!sbOn()) return false;
+  try{
+    const r=await fetch(SUPABASE.url+'/rest/v1/arcade_runs',{
+      method:'POST',
+      headers:{'apikey':SUPABASE.anon,'Authorization':'Bearer '+SUPABASE.anon,
+               'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({name:e.name, avatar:e.avatar, score:e.score,
+                           reps:e.reps, streak:e.streak, diff:e.diff})
+    });
+    return r.ok;
+  }catch(err){ return false; }
+}
+async function sbFetchTop(limit){
+  if(!sbOn()) return null;
+  try{
+    const r=await fetch(SUPABASE.url+'/rest/v1/arcade_runs?select=name,avatar,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),
+      {headers:{'apikey':SUPABASE.anon,'Authorization':'Bearer '+SUPABASE.anon}});
+    if(!r.ok) return null;
+    return await r.json();
+  }catch(err){ return null; }
 }
 function lessonTitle(id){ const l=LEVELS.find(x=>x.id===id); return l?l.title:id; }
 function pushHistory(entry){
@@ -1224,9 +1257,11 @@ function finishArcade(){
     const entry={name:DB.active, avatar:prof.avatar, score:arcadeScore, reps:arcadeReps,
                  streak:arcadeBestStreak, diff:difficulty.key, t:Date.now()};
     const rank=addLeader(entry);
+    sbSubmitRun(entry);   // fire-and-forget: also post to the global leaderboard
     rankMsg = rank===0 ? '🏆 Новый рекорд устройства!' :
               rank>0  ? '🏆 Место в таблице: '+(rank+1) :
                         'В топ-10 не вошёл — ещё попытка!';
+    if(sbOn()) rankMsg+='\nРезультат отправлен в общий рейтинг 🌍';
   } else if(!storageOK){
     rankMsg='(режим гостя — результат не сохраняется)';
   }
@@ -1936,29 +1971,62 @@ document.getElementById('createProfileBtn').onclick=()=>{
 /* ================= LEADERBOARD ================= */
 const leaderScreen=document.getElementById('leaderScreen');
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+let leaderTab='local';
+function ldRow(e,i,dateStr){
+  const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':((i+1)+'.');
+  const dn=(DIFFS[e.diff]||{}).name||e.diff;
+  return '<div style="display:flex;align-items:center;gap:10px;background:#15110d;border:2px solid '+(i===0?'#ffd23f':'#2a241d')+';border-radius:12px;padding:9px 12px;">'+
+    '<div style="width:30px;text-align:center;font-size:'+(i<3?'18px':'13px')+';font-weight:700;color:#ffd23f;">'+medal+'</div>'+
+    '<div style="font-size:18px">'+escHtml(String(e.avatar||'🏀').slice(0,4))+'</div>'+
+    '<div style="flex:1;text-align:left;"><div style="font-weight:700;color:#e9dfd1;font-size:14px;">'+escHtml(String(e.name||'?').slice(0,14))+'</div>'+
+    '<div style="font-size:10px;color:#9b8f80;">'+(e.reps|0)+' повторов · серия ×'+(e.streak|0)+' · '+dn+' · '+dateStr+'</div></div>'+
+    '<div style="font-weight:800;color:#19c2a0;font-size:16px;">'+(e.score|0)+'</div></div>';
+}
+function ldTabsUi(){
+  const w=document.getElementById('ldTabWorld'), l=document.getElementById('ldTabLocal');
+  const on='background:#19c2a0;color:#0f0b08;border-color:#19c2a0;';
+  w.style.cssText='font-size:13px;padding:8px 16px;'+(leaderTab==='world'?on:'');
+  l.style.cssText='font-size:13px;padding:8px 16px;'+(leaderTab==='local'?on:'');
+  document.getElementById('leaderClearBtn').style.display = leaderTab==='local'?'':'none';
+  document.getElementById('leaderNote').textContent = leaderTab==='world'
+    ? 'Общий рейтинг всех игроков (онлайн).' : 'Лучшие забеги на этом устройстве.';
+}
 function renderLeaders(){
+  ldTabsUi();
   const el=document.getElementById('leaderList');
+  if(leaderTab==='world'){
+    if(!sbOn()){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Общий рейтинг ещё не подключён.</div>'; return; }
+    el.innerHTML='<div style="color:#9b8f80;font-size:12px;">Загрузка…</div>';
+    sbFetchTop(20).then(rows=>{
+      if(leaderTab!=='world') return;          // user switched tabs meanwhile
+      if(!rows){ el.innerHTML='<div style="color:#ff8a3d;font-size:12px;">Не удалось загрузить — проверь интернет и попробуй ещё раз.</div>'; return; }
+      if(rows.length===0){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Пока пусто — стань первым в мире!</div>'; return; }
+      el.innerHTML=rows.map((e,i)=>{
+        const d=e.created_at? new Date(e.created_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) : '';
+        return ldRow(e,i,d);
+      }).join('');
+    });
+    return;
+  }
+  // local tab
   if(!storageOK){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Недоступно в этом просмотре — на сайте таблица работает.</div>'; return; }
   const L=getLeaders();
   if(L.length===0){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Пока пусто — сыграй Аркаду!</div>'; return; }
-  el.innerHTML=L.map((e,i)=>{
-    const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':((i+1)+'.');
-    const date=new Date(e.t).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'});
-    const dn=(DIFFS[e.diff]||{}).name||e.diff;
-    return '<div style="display:flex;align-items:center;gap:10px;background:#15110d;border:2px solid '+(i===0?'#ffd23f':'#2a241d')+';border-radius:12px;padding:9px 12px;">'+
-      '<div style="width:30px;text-align:center;font-size:'+(i<3?'18px':'13px')+';font-weight:700;color:#ffd23f;">'+medal+'</div>'+
-      '<div style="font-size:18px">'+(e.avatar||'🏀')+'</div>'+
-      '<div style="flex:1;text-align:left;"><div style="font-weight:700;color:#e9dfd1;font-size:14px;">'+escHtml(e.name)+'</div>'+
-      '<div style="font-size:10px;color:#9b8f80;">'+e.reps+' повторов · серия ×'+e.streak+' · '+dn+' · '+date+'</div></div>'+
-      '<div style="font-weight:800;color:#19c2a0;font-size:16px;">'+e.score+'</div></div>';
-  }).join('');
+  el.innerHTML=L.map((e,i)=>ldRow(e,i,new Date(e.t).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}))).join('');
 }
-function openLeaders(){ menuScreen.classList.add('hidden'); leaderScreen.classList.remove('hidden'); renderLeaders(); }
+function openLeaders(){
+  menuScreen.classList.add('hidden');
+  leaderScreen.classList.remove('hidden');
+  leaderTab = sbOn() ? 'world' : 'local';
+  renderLeaders();
+}
+document.getElementById('ldTabWorld').onclick=()=>{ leaderTab='world'; renderLeaders(); };
+document.getElementById('ldTabLocal').onclick=()=>{ leaderTab='local'; renderLeaders(); };
 document.getElementById('openLeaderBtn').onclick=openLeaders;
 document.getElementById('leaderBackBtn').onclick=()=>{ leaderScreen.classList.add('hidden'); toMenu(); };
 document.getElementById('leaderClearBtn').onclick=()=>{
   if(!storageOK) return;
-  if(confirm('Очистить таблицу лидеров?')){ DB.leaders=[]; saveDB(); renderLeaders(); }
+  if(confirm('Очистить таблицу лидеров устройства?')){ DB.leaders=[]; saveDB(); renderLeaders(); }
 };
 document.getElementById('arcadeBtn').onclick=()=>{ menuScreen.classList.add('hidden'); startArcade(); startLoop(); };
 
