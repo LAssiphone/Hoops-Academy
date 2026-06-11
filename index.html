@@ -103,7 +103,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
         <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
       </div>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v13</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v14</span></p>
      </div>
     </div>
 
@@ -362,15 +362,26 @@ async function sbCall(path, opts){
   }
   return null;
 }
+let sbSubmitErr=null;      // exact error of the last REAL run submission (for diagnostics)
 async function sbSubmitRun(e){
   if(!sbOn()) return false;
+  // defensively clamp to the DB CHECK constraints so edge values can't bounce
+  const payload={
+    name:String(e.name||'игрок').slice(0,14),
+    avatar:String(e.avatar||'🏀'),
+    score:Math.max(1,Math.min(99999, e.score|0)),
+    reps:Math.max(0,Math.min(999, e.reps|0)),
+    streak:Math.max(0,Math.min(999, e.streak|0)),
+    diff:(e.diff==='easy'||e.diff==='hard')?e.diff:'norm'
+  };
   const r=await sbCall('/rest/v1/arcade_runs',{
     method:'POST',
     headers:{'Prefer':'return=minimal'},
-    body:JSON.stringify({name:e.name, avatar:e.avatar, score:e.score,
-                         reps:e.reps, streak:e.streak, diff:e.diff})
+    body:JSON.stringify(payload)
   });
-  return !!r;
+  if(r){ sbSubmitErr=null; return true; }
+  sbSubmitErr = sbLastErr ? Object.assign({}, sbLastErr) : {status:-1, body:'нет деталей'};
+  return false;
 }
 async function sbFetchTop(limit){
   if(!sbOn()) return null;
@@ -1307,9 +1318,10 @@ function finishArcade(){
                  streak:arcadeBestStreak, diff:difficulty.key, t:Date.now()};
     const rank=addLeader(entry);
     sbSubmitRun(entry).then(ok=>{
-      // surface silent failures: append a warning to the still-open results screen
+      // surface silent failures WITH the exact server reply
       if(!ok && phase==='done'){
-        document.getElementById('doneText').innerHTML+='<br><span style="color:#ff8a3d">⚠️ В общий рейтинг не отправилось — открой 🏆 → 🔧 Проверка.</span>';
+        const det = sbSubmitErr ? ('HTTP '+sbSubmitErr.status+': '+String(sbSubmitErr.body||'').slice(0,160)) : '';
+        document.getElementById('doneText').innerHTML+='<br><span style="color:#ff8a3d">⚠️ В общий рейтинг не отправилось.<br><small>'+escHtml(det)+'</small></span>';
       }
     });
     rankMsg = rank===0 ? '🏆 Новый рекорд устройства!' :
@@ -2111,6 +2123,9 @@ document.getElementById('leaderCheckBtn').onclick=async ()=>{
       }
     }
   }catch(err){ out+='✗ Сбой сети при записи: '+String(err&&err.message||err); }
+  if(sbSubmitErr){
+    out+='\n\n— Последняя реальная отправка результата: ✗ HTTP '+sbSubmitErr.status+'\n'+String(sbSubmitErr.body||'').slice(0,200);
+  }
   show(out);
 };
 document.getElementById('leaderClearBtn').onclick=()=>{
