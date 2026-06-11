@@ -3,6 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#15110d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Hoops">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>HOOPS ACADEMY — школа движения без мяча</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap');
@@ -97,7 +103,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
         <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
       </div>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v11</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v12</span></p>
      </div>
     </div>
 
@@ -2144,6 +2150,10 @@ document.getElementById('hExit').onclick=()=>{
   if(arcade && arcadeScore>0){ finishArcade(); }   // exiting ends the run — score still counts
   else { toMenu(); }
 };
+// PWA: offline app shell (no-op where service workers are unavailable, e.g. previews)
+if('serviceWorker' in navigator && location.protocol==='https:'){
+  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+}
 fit(); buildMenu(); toMenu();
 updateProfileBtn();
 // boot: restore the last active player, or ask "who's playing?" on first run
