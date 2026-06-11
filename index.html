@@ -103,7 +103,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
         <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
       </div>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v12</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v13</span></p>
      </div>
     </div>
 
@@ -1306,7 +1306,12 @@ function finishArcade(){
     const entry={name:DB.active, avatar:prof.avatar, score:arcadeScore, reps:arcadeReps,
                  streak:arcadeBestStreak, diff:difficulty.key, t:Date.now()};
     const rank=addLeader(entry);
-    sbSubmitRun(entry);   // fire-and-forget: also post to the global leaderboard
+    sbSubmitRun(entry).then(ok=>{
+      // surface silent failures: append a warning to the still-open results screen
+      if(!ok && phase==='done'){
+        document.getElementById('doneText').innerHTML+='<br><span style="color:#ff8a3d">⚠️ В общий рейтинг не отправилось — открой 🏆 → 🔧 Проверка.</span>';
+      }
+    });
     rankMsg = rank===0 ? '🏆 Новый рекорд устройства!' :
               rank>0  ? '🏆 Место в таблице: '+(rank+1) :
                         'В топ-10 не вошёл — ещё попытка!';
@@ -2078,14 +2083,35 @@ document.getElementById('openLeaderBtn').onclick=openLeaders;
 document.getElementById('leaderBackBtn').onclick=()=>{ leaderScreen.classList.add('hidden'); toMenu(); };
 document.getElementById('leaderCheckBtn').onclick=async ()=>{
   const el=document.getElementById('leaderList');
-  el.innerHTML='<div style="color:#9b8f80;font-size:12px;">Проверяю соединение с базой…</div>';
+  const show=t=>{ el.innerHTML='<div style="color:#cabfae;font-size:12px;white-space:pre-wrap;text-align:left;">'+escHtml(t)+'</div>'; };
+  show('Проверяю чтение…');
   sbKeyIdx=-1; sbLastErr=null;                  // re-probe both keys from scratch
   const rows=await sbFetchTop(1);
-  if(rows){
-    el.innerHTML='<div style="color:#19c2a0;font-size:12px;white-space:pre-wrap;">✓ Соединение работает (ключ #'+(sbKeyIdx+1)+').\nЗаписей в базе: '+(rows.length? 'есть' : 'пока нет — сыграй Аркаду!')+'</div>';
-  } else {
-    el.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">✗ Соединения нет.\n\n'+escHtml(sbExplain())+'</div>';
-  }
+  if(!rows){ show('✗ Чтение не работает.\n\n'+sbExplain()); return; }
+  let out='✓ Чтение работает (ключ #'+(sbKeyIdx+1)+').\n';
+  show(out+'Проверяю запись…');
+  // write probe: a deliberately INVALID row (score=0 breaks the CHECK) —
+  // the error code tells us whether INSERT is allowed, and nothing ever lands.
+  try{
+    const r=await fetch(SUPABASE.url+'/rest/v1/arcade_runs',{
+      method:'POST',
+      headers:Object.assign(sbHeaders(SUPABASE.keys[sbKeyIdx]),{'Prefer':'return=minimal'}),
+      body:JSON.stringify({name:'тест',avatar:'🏀',score:0,reps:0,streak:0,diff:'norm'})
+    });
+    if(r.ok){
+      out+='✓ Запись работает.\n(Тестовая строка со score 0 прошла — в таблице нет CHECK-ограничений; не страшно, но дикие значения никто не отсечёт.)';
+    } else {
+      const body=await r.text();
+      if(body.indexOf('42501')>=0){
+        out+='✗ ЗАПИСЬ ЗАПРЕЩЕНА политикой RLS — вот и причина!\nВыполни в SQL Editor одну строку:\n\ncreate policy "anon insert" on public.arcade_runs for insert to anon with check (true);';
+      } else if(body.indexOf('23514')>=0 || body.indexOf('check constraint')>=0){
+        out+='✓ Запись разрешена (тестовую строку отклонила проверка данных — так и задумано).\nОтправка результатов должна работать: сыграй Аркаду и обнови 🌍.';
+      } else {
+        out+='✗ Запись не прошла: HTTP '+r.status+'\n'+body.slice(0,200);
+      }
+    }
+  }catch(err){ out+='✗ Сбой сети при записи: '+String(err&&err.message||err); }
+  show(out);
 };
 document.getElementById('leaderClearBtn').onclick=()=>{
   if(!storageOK) return;
