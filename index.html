@@ -97,7 +97,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
         <button class="go ghost" id="openEditorBtn" style="font-size:14px;padding:10px 18px">✏️ Редактор расстановок</button>
       </div>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v9</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v10</span></p>
      </div>
     </div>
 
@@ -321,7 +321,10 @@ function updateProfileBtn(){
    The anon key is PUBLIC by design — its rights are limited by row-level-security
    policies (read + insert only). Until url/anon are filled in, the game quietly
    falls back to the device-local leaderboard. */
-const SUPABASE={ url:'', anon:'' };
+const SUPABASE={
+  url:'https://vveatfpoeutabnniedwr.supabase.co',
+  anon:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2ZWF0ZnBvZXV0YWJubmllZHdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMDM3NTksImV4cCI6MjA5Njc3OTc1OX0.tUhEG7BvzdUtPnaLXMTBLv3ioI1OVAteUfG0Jh4s9fQ'
+};
 const sbOn=()=> !!(SUPABASE.url && SUPABASE.anon);
 async function sbSubmitRun(e){
   if(!sbOn()) return false;
