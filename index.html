@@ -446,6 +446,7 @@ let randomLayouts=true;   // generate fresh layouts each rep (fallback to the ha
    Mirrors the editor's 4 teaching invariants: clean first pass, open zone, clear cut lane,
    clear return lane, and the zone is goal-side ahead of me. Falls back to LAYOUTS if a
    valid one isn't found within the attempt budget. */
+function rnd(a,b){return a+Math.random()*(b-a);}
 function segDist(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1;let t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(p[0]-(a[0]+t*dx),p[1]-(a[1]+t*dy));}
 function d2(a,b){return Math.hypot(a[0]-b[0],a[1]-b[1]);}
 function genGngLayout(){
