@@ -115,7 +115,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v20</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v21</span></p>
      </div>
     </div>
 
@@ -153,7 +153,8 @@
       <div id="profileList" style="width:100%;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
       <div class="pill">Сложность</div>
       <div id="diffRow" style="display:flex;gap:6px;justify-content:center;margin:8px 0 4px;flex-wrap:wrap;"></div>
-      <div id="diffHint" style="font-size:11px;color:#9b8f80;margin-bottom:10px;text-align:center;"></div>
+      <div id="diffHint" style="font-size:11px;color:#9b8f80;margin-bottom:6px;text-align:center;"></div>
+      <div id="profileUid" style="font-size:10px;color:#5c5347;margin-bottom:10px;text-align:center;letter-spacing:.5px;"></div>
       <div class="pill">Новый игрок</div>
       <div id="avatarRow" style="display:flex;gap:8px;justify-content:center;margin:8px 0;"></div>
       <div style="display:flex;gap:8px;width:100%;max-width:320px;">
@@ -333,10 +334,20 @@ function addLeader(entry){
   saveDB();
   return DB.leaders.indexOf(entry);   // rank, or -1 if it fell off
 }
+function genUid(){
+  // short, stable, collision-safe enough for a kids' leaderboard
+  let r='';
+  if(window.crypto && crypto.getRandomValues){
+    const a=new Uint32Array(2); crypto.getRandomValues(a);
+    r=a[0].toString(36)+a[1].toString(36);
+  } else { r=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2); }
+  return ('u'+r+Date.now().toString(36)).slice(0,14);
+}
 function blankStats(){ return {totalPoints:0,bestRep:0,streak:0,bestStreak:0,reps:0,success:0,fails:0,history:[],bestArcade:0}; }
 function applyProfile(name){
   // copy saved data INTO the live objects (they're referenced all over the code)
   const p=DB.profiles[name]; if(!p) return;
+  if(!p.uid){ p.uid=genUid(); saveDB(); }   // older profiles get a UID on first use
   DB.active=name; p.last=Date.now();
   setDifficulty(p.difficulty||'norm');
   Object.keys(progress).forEach(k=>delete progress[k]);
@@ -417,6 +428,7 @@ async function sbSubmitRun(e){
   if(!sbOn()) return false;
   // defensively clamp to the DB CHECK constraints so edge values can't bounce
   const payload={
+    uid:String(e.uid||'').slice(0,24),
     name:String(e.name||'игрок').slice(0,14),
     avatar:String(e.avatar||'🏀'),
     score:Math.max(1,Math.min(99999, e.score|0)),
@@ -426,18 +438,27 @@ async function sbSubmitRun(e){
           ? diffBucket(parseInt(e.diff,10))
           : ((e.diff==='easy'||e.diff==='hard')?e.diff:'norm')
   };
-  const r=await sbCall('/rest/v1/arcade_runs',{
+  let r=await sbCall('/rest/v1/arcade_runs',{
     method:'POST',
     headers:{'Prefer':'return=minimal'},
     body:JSON.stringify(payload)
   });
+  if(!r && sbLastErr && /uid|PGRST204/i.test(String(sbLastErr.body||''))){
+    // the uid column isn't in the table yet — send without it (works either way)
+    const p2=Object.assign({},payload); delete p2.uid;
+    r=await sbCall('/rest/v1/arcade_runs',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(p2)});
+  }
   if(r){ sbSubmitErr=null; return true; }
   sbSubmitErr = sbLastErr ? Object.assign({}, sbLastErr) : {status:-1, body:'нет деталей'};
   return false;
 }
 async function sbFetchTop(limit){
   if(!sbOn()) return null;
-  const r=await sbCall('/rest/v1/arcade_runs?select=name,avatar,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),{method:'GET'});
+  let r=await sbCall('/rest/v1/arcade_runs?select=name,avatar,uid,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),{method:'GET'});
+  if(!r && sbLastErr && /uid|42703|PGRST/i.test(String(sbLastErr.body||''))){
+    // uid column not added yet — fetch the classic shape
+    r=await sbCall('/rest/v1/arcade_runs?select=name,avatar,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),{method:'GET'});
+  }
   if(!r) return null;
   try{ return await r.json(); }catch(e){ return null; }
 }
@@ -1522,7 +1543,7 @@ function finishArcade(){
   const prof = storageOK && DB.active && DB.profiles[DB.active];
   let rankMsg='';
   if(prof && arcadeScore>0){
-    const entry={name:DB.active, avatar:prof.avatar, score:arcadeScore, reps:arcadeReps,
+    const entry={name:DB.active, avatar:prof.avatar, uid:prof.uid||'', score:arcadeScore, reps:arcadeReps,
                  streak:arcadeBestStreak, diff:reached, t:Date.now()};
     const rank=addLeader(entry);
     sbSubmitRun(entry).then(ok=>{
@@ -2202,6 +2223,8 @@ function renderDiff(){
     row.appendChild(b);
   }
   document.getElementById('diffHint').textContent=diffHint(difficulty.level);
+  const up=storageOK && DB.active && DB.profiles[DB.active];
+  document.getElementById('profileUid').textContent = up && up.uid ? ('ID игрока: #'+up.uid) : '';
 }
 function renderAvatars(){
   const row=document.getElementById('avatarRow');
@@ -2268,7 +2291,7 @@ document.getElementById('createProfileBtn').onclick=()=>{
   }
   const exists=Object.keys(DB.profiles).find(n=>n.toLowerCase()===name.toLowerCase());
   if(exists){ applyProfile(exists); inp.value=''; closeProfile(); return; }
-  DB.profiles[name]={avatar:pickedAvatar, difficulty:difficulty.level, progress:{}, stats:blankStats(), created:Date.now(), last:Date.now()};
+  DB.profiles[name]={uid:genUid(), avatar:pickedAvatar, difficulty:difficulty.level, progress:{}, stats:blankStats(), created:Date.now(), last:Date.now()};
   applyProfile(name);
   inp.value='';
   closeProfile();
@@ -2346,7 +2369,7 @@ function ldRow(e,i,dateStr){
   return '<div style="display:flex;align-items:center;gap:10px;background:#15110d;border:2px solid '+(i===0?'#ffd23f':'#2a241d')+';border-radius:12px;padding:9px 12px;">'+
     '<div style="width:30px;text-align:center;font-size:'+(i<3?'18px':'13px')+';font-weight:700;color:#ffd23f;">'+medal+'</div>'+
     '<div style="font-size:18px">'+escHtml(String(e.avatar||'🏀').slice(0,4))+'</div>'+
-    '<div style="flex:1;text-align:left;"><div style="font-weight:700;color:#e9dfd1;font-size:14px;">'+escHtml(String(e.name||'?').slice(0,14))+'</div>'+
+    '<div style="flex:1;text-align:left;"><div style="font-weight:700;color:#e9dfd1;font-size:14px;">'+escHtml(String(e.name||'?').slice(0,14))+(e.uid?' <span style="font-weight:400;font-size:9px;color:#5c5347;">#'+escHtml(String(e.uid).slice(-4))+'</span>':'')+'</div>'+
     '<div style="font-size:10px;color:#9b8f80;">'+(e.reps|0)+' повторов · серия ×'+(e.streak|0)+' · '+dn+' · '+dateStr+'</div></div>'+
     '<div style="font-weight:800;color:#19c2a0;font-size:16px;">'+(e.score|0)+'</div></div>';
 }
