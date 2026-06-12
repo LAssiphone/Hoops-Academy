@@ -115,7 +115,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v22</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v23</span></p>
      </div>
     </div>
 
@@ -130,6 +130,20 @@
       </div>
       <div id="setOut" style="width:100%;margin-top:12px;font-size:12px;color:#cabfae;white-space:pre-wrap;text-align:left;"></div>
       <button class="go" id="setBackBtn" style="margin-top:14px;font-size:14px;padding:10px 18px">← Меню</button>
+     </div>
+    </div>
+
+    <!-- ARCADE START -->
+    <div class="overlay hidden" id="arcadeStartScreen">
+     <div class="overlay-inner" style="max-width:460px;width:100%;">
+      <h1>🔥 Аркада</h1>
+      <p style="font-size:13px;color:#cabfae;margin:2px 0 8px;">Выбери <b>стартовый уровень</b> защиты:</p>
+      <div id="arcLvlRow" style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:8px;"></div>
+      <p id="arcHint" style="font-size:11px;color:#9b8f80;margin:0 0 12px;line-height:1.45;"></p>
+      <div class="row">
+        <button class="go" id="arcStartGo" style="background:#ff8a3d;border-color:#ff8a3d;color:#1a1208;">Старт!</button>
+        <button class="go ghost" id="arcStartBack">← Меню</button>
+      </div>
      </div>
     </div>
 
@@ -428,6 +442,7 @@ async function sbSubmitRun(e){
   if(!sbOn()) return false;
   // defensively clamp to the DB CHECK constraints so edge values can't bounce
   const payload={
+    lvl:Math.max(1,Math.min(10, e.lvl|0)) || 1,
     uid:String(e.uid||'').slice(0,24),
     name:String(e.name||'игрок').slice(0,14),
     avatar:String(e.avatar||'🏀'),
@@ -443,20 +458,26 @@ async function sbSubmitRun(e){
     headers:{'Prefer':'return=minimal'},
     body:JSON.stringify(payload)
   });
-  if(!r && sbLastErr && /uid|PGRST204/i.test(String(sbLastErr.body||''))){
-    // the uid column isn't in the table yet — send without it (works either way)
-    const p2=Object.assign({},payload); delete p2.uid;
+  if(!r && sbLastErr && /lvl|uid|PGRST204/i.test(String(sbLastErr.body||''))){
+    // some columns may not be in the table yet — strip the missing ones and retry
+    const p2=Object.assign({},payload);
+    if(/lvl/i.test(String(sbLastErr.body||''))) delete p2.lvl;
     r=await sbCall('/rest/v1/arcade_runs',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(p2)});
+    if(!r && sbLastErr && /uid|PGRST204/i.test(String(sbLastErr.body||''))){
+      delete p2.uid; delete p2.lvl;
+      r=await sbCall('/rest/v1/arcade_runs',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(p2)});
+    }
   }
   if(r){ sbSubmitErr=null; return true; }
   sbSubmitErr = sbLastErr ? Object.assign({}, sbLastErr) : {status:-1, body:'нет деталей'};
   return false;
 }
-async function sbFetchTop(limit){
+async function sbFetchTop(limit, lvl){
   if(!sbOn()) return null;
-  let r=await sbCall('/rest/v1/arcade_runs?select=name,avatar,uid,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),{method:'GET'});
-  if(!r && sbLastErr && /uid|42703|PGRST/i.test(String(sbLastErr.body||''))){
-    // uid column not added yet — fetch the classic shape
+  const flt = lvl ? ('&lvl=eq.'+lvl) : '';
+  let r=await sbCall('/rest/v1/arcade_runs?select=name,avatar,uid,lvl,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20)+flt,{method:'GET'});
+  if(!r && sbLastErr && /lvl|uid|42703|PGRST/i.test(String(sbLastErr.body||''))){
+    // columns not added yet — fetch the classic shape (filter unavailable)
     r=await sbCall('/rest/v1/arcade_runs?select=name,avatar,score,reps,streak,diff,created_at&order=score.desc&limit='+(limit||20),{method:'GET'});
   }
   if(!r) return null;
@@ -548,6 +569,12 @@ let arcadeLives=3, arcadeScore=0, arcadeReps=0, arcadeBestStreak=0, arcadeBaseLe
 const ARCADE_LIVES=3;
 function unlockedLessonIds(){
   return LEVELS.filter(lv=>!isLocked(lv)).map(lv=>lv.id);
+}
+function arcadeUnlockedLevel(){
+  // start level N opens once EVERY lesson's test is passed at difficulty >= N
+  let m=Infinity;
+  LEVELS.forEach(lv=>{ m=Math.min(m, progOf(lv.id).lvl||0); });
+  return Math.max(1, Math.min(DIFF_MAX, m===Infinity?0:m));
 }
 function pickArcadeLesson(){
   const ids=unlockedLessonIds();
@@ -1009,18 +1036,19 @@ function startTrain(){
   reps=0; repsNeeded=3; stars=0; setStars(0); runFails=0;
   beginRep(true);
 }
-let runStartPts=0;
+let runStartPts=0, arcadeUnlockMsg='';
 function startTest(){
   phase='test'; setBadge('ЗАЧЁТ · '+difficulty.name); setupScene();
   runStartPts=STATS.totalPoints;
   reps=0; repsNeeded=5; stars=0; setStars(0); runFails=0;
   beginRep(false);
 }
-function startArcade(){
+function startArcade(startL){
+  startL=Math.max(1, Math.min(arcadeUnlockedLevel(), startL||1));
   arcade=true; phase='test';            // arcade runs on the live-defense 'test' engine
   arcadeLives=ARCADE_LIVES; arcadeScore=0; arcadeReps=0; arcadeBestStreak=0;
   arcadeReturnLevel=difficulty.level;    // the player's own level — restored after the run
-  arcadeBaseLevel=1; difficulty=mkDiff(1); // arcade ALWAYS starts at Ур.1 and ramps up
+  arcadeBaseLevel=startL; difficulty=mkDiff(startL);  // ramps up from the chosen start
   STATS.streak=0;                        // fresh streak for the run
   setBadge('АРКАДА · '+difficulty.name); // hud shows hearts instead of stars
   currentLesson=pickArcadeLesson();
@@ -1510,8 +1538,11 @@ function finishTest(){
   // honest stars: 3 = clean run, 2 = 1–2 turnovers, 1 = more
   const earned = runFails===0 ? 3 : (runFails<=2 ? 2 : 1);
   const runPts = Math.max(0, STATS.totalPoints - runStartPts);
+  const wasUnlocked = arcadeUnlockedLevel();
   const o=progOf(currentLesson);
   progress[currentLesson]={ st:Math.max(o.st,earned), pts:Math.max(o.pts,runPts), lvl:Math.max(o.lvl,difficulty.level) };
+  const nowUnlocked = arcadeUnlockedLevel();
+  if(nowUnlocked>wasUnlocked) arcadeUnlockMsg='\n🔓 Аркада: открыт старт с Ур. '+nowUnlocked+'!';
   persistProfile();
   if(navigator.vibrate) navigator.vibrate([40,60,40,60,80]);
   const msg = earned===3
@@ -1519,7 +1550,10 @@ function finishTest(){
     : (earned===2
       ? 'Урок пройден, но были потери ('+runFails+'). Сыграй ещё раз без ошибок — будет 3 звезды!'
       : 'Пройдено с трудом ('+runFails+' потерь). Потренируйся ещё — меньше держи мяч и следи за линией паса.');
-  showDone('Урок пройден! 🏀', earned, msg, ()=>toMenu());
+  showDone('Урок пройден! 🏀', earned,
+    msg + '\nОчки за прогон: '+runPts+' (Ур. '+difficulty.level+')' + arcadeUnlockMsg,
+    ()=>toMenu());
+  arcadeUnlockMsg='';
 }
 
 let doneAction=null;
@@ -1544,7 +1578,7 @@ function finishArcade(){
   let rankMsg='';
   if(prof && arcadeScore>0){
     const entry={name:DB.active, avatar:prof.avatar, uid:prof.uid||'', score:arcadeScore, reps:arcadeReps,
-                 streak:arcadeBestStreak, diff:reached, t:Date.now()};
+                 streak:arcadeBestStreak, diff:reached, lvl:arcadeBaseLevel, t:Date.now()};
     const rank=addLeader(entry);
     sbSubmitRun(entry).then(ok=>{
       // surface silent failures WITH the exact server reply
@@ -1565,7 +1599,7 @@ function finishArcade(){
   if(navigator.vibrate) navigator.vibrate([50,60,50,60,90]);
   persistProfile();
   showDone('Забег окончен!', String(arcadeScore),
-    'Повторов: '+arcadeReps+' · Лучшая серия: ×'+arcadeBestStreak+' · дошёл до Ур. '+reached+'\n'+rankMsg+'\n«Дальше» — новый забег.',
+    'Старт Ур. '+arcadeBaseLevel+' → дошёл до Ур. '+reached+'\nПовторов: '+arcadeReps+' · Лучшая серия: ×'+arcadeBestStreak+'\n'+rankMsg+'\n«Дальше» — новый забег.',
     ()=>startArcade());
 }
 
@@ -1934,6 +1968,7 @@ function toMenu(){
   leaderScreen.classList.add('hidden');
   settingsScreen.classList.add('hidden');
   installScreen.classList.add('hidden');
+  arcadeStartScreen.classList.add('hidden');
   refreshInstallUi();
   updateProfileBtn();
   buildMenu(); menuScreen.classList.remove('hidden');
@@ -2363,7 +2398,7 @@ document.getElementById('installNowBtn').onclick=async ()=>{
 /* ================= LEADERBOARD ================= */
 const leaderScreen=document.getElementById('leaderScreen');
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
-let leaderTab='local';
+let leaderTab='local', leaderLvl=0;   // 0 = все уровни
 function ldRow(e,i,dateStr){
   const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':((i+1)+'.');
   const dn=diffLabel(e.diff);
@@ -2371,7 +2406,7 @@ function ldRow(e,i,dateStr){
     '<div style="width:30px;text-align:center;font-size:'+(i<3?'18px':'13px')+';font-weight:700;color:#ffd23f;">'+medal+'</div>'+
     '<div style="font-size:18px">'+escHtml(String(e.avatar||'🏀').slice(0,4))+'</div>'+
     '<div style="flex:1;text-align:left;"><div style="font-weight:700;color:#e9dfd1;font-size:14px;">'+escHtml(String(e.name||'?').slice(0,14))+(e.uid?' <span style="font-weight:400;font-size:9px;color:#5c5347;">#'+escHtml(String(e.uid).slice(-4))+'</span>':'')+'</div>'+
-    '<div style="font-size:10px;color:#9b8f80;">'+(e.reps|0)+' повторов · серия ×'+(e.streak|0)+' · '+dn+' · '+dateStr+'</div></div>'+
+    '<div style="font-size:10px;color:#9b8f80;">'+(e.lvl?('старт Ур.'+(e.lvl|0)+' · '):'')+(e.reps|0)+' повторов · серия ×'+(e.streak|0)+' · '+dn+' · '+dateStr+'</div></div>'+
     '<div style="font-weight:800;color:#19c2a0;font-size:16px;">'+(e.score|0)+'</div></div>';
 }
 function ldTabsUi(){
@@ -2388,15 +2423,24 @@ function renderLeaders(){
   const el=document.getElementById('leaderList');
   if(leaderTab==='world'){
     if(!sbOn()){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Общий рейтинг ещё не подключён.</div>'; return; }
-    el.innerHTML='<div style="color:#9b8f80;font-size:12px;">Загрузка…</div>';
-    sbFetchTop(20).then(rows=>{
+    // per-start-level chips: Все, 1..10
+    let chips='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:8px;">';
+    for(let L=0; L<=DIFF_MAX; L++){
+      const on=(leaderLvl===L);
+      chips+='<button data-lvl="'+L+'" style="font-size:11px;font-weight:700;min-width:30px;padding:5px 6px;border-radius:8px;cursor:pointer;font-family:\'Space Mono\',monospace;background:'+(on?'#19c2a0':'#15110d')+';color:'+(on?'#0f0b08':'#cabfae')+';border:2px solid '+(on?'#19c2a0':'#3a332a')+';">'+(L===0?'Все':L)+'</button>';
+    }
+    chips+='</div>';
+    el.innerHTML=chips+'<div id="ldWorldList" style="display:flex;flex-direction:column;gap:6px;"><div style="color:#9b8f80;font-size:12px;">Загрузка…</div></div>';
+    el.querySelectorAll('button[data-lvl]').forEach(b=>{ b.onclick=()=>{ leaderLvl=parseInt(b.dataset.lvl,10); renderLeaders(); }; });
+    const wl=document.getElementById('ldWorldList');
+    sbFetchTop(20, leaderLvl||0).then(rows=>{
       if(leaderTab!=='world') return;          // user switched tabs meanwhile
       if(!rows){
-        el.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">Не удалось загрузить.\n\n'+escHtml(sbExplain())+'</div>';
+        wl.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">Не удалось загрузить.\n\n'+escHtml(sbExplain())+'</div>';
         return;
       }
-      if(rows.length===0){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Пока пусто — стань первым в мире!</div>'; return; }
-      el.innerHTML=rows.map((e,i)=>{
+      if(rows.length===0){ wl.innerHTML='<div style="color:#6b6155;font-size:12px;">'+(leaderLvl?('На старте Ур.'+leaderLvl+' пока пусто — стань первым!'):'Пока пусто — стань первым в мире!')+'</div>'; return; }
+      wl.innerHTML=rows.map((e,i)=>{
         const d=e.created_at? new Date(e.created_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) : '';
         return ldRow(e,i,d);
       }).join('');
@@ -2458,7 +2502,29 @@ document.getElementById('leaderClearBtn').onclick=()=>{
   if(!storageOK) return;
   if(confirm('Очистить таблицу лидеров устройства?')){ DB.leaders=[]; saveDB(); renderLeaders(); }
 };
-document.getElementById('arcadeBtn').onclick=()=>{ menuScreen.classList.add('hidden'); startArcade(); startLoop(); };
+const arcadeStartScreen=document.getElementById('arcadeStartScreen');
+let arcChosen=1;
+function renderArcStart(){
+  const unlocked=arcadeUnlockedLevel();
+  arcChosen=Math.min(arcChosen||1, unlocked);
+  const row=document.getElementById('arcLvlRow');
+  row.innerHTML='';
+  for(let L=DIFF_MIN; L<=DIFF_MAX; L++){
+    const open=L<=unlocked, on=(arcChosen===L), hot=L===10;
+    const b=document.createElement('button');
+    b.textContent=open?(hot?'💀10':String(L)):'🔒'+L;
+    b.style.cssText='font-size:13px;font-weight:700;min-width:38px;padding:8px 0;border-radius:10px;font-family:\'Space Mono\',monospace;cursor:'+(open?'pointer':'default')+';opacity:'+(open?'1':'0.4')+';background:'+(on?(hot?'#ff3b5c':'#19c2a0'):'#15110d')+';color:'+(on?'#0f0b08':'#cabfae')+';border:2px solid '+(on?(hot?'#ff3b5c':'#19c2a0'):'#3a332a')+';';
+    if(open) b.onclick=()=>{ arcChosen=L; renderArcStart(); };
+    row.appendChild(b);
+  }
+  document.getElementById('arcHint').innerHTML =
+    'Защита стартует с <b>Ур. '+arcChosen+'</b> и злеет каждые 10 успешных повторов.'+
+    '<br>Очки умножаются на уровень: ×'+(0.55+0.09*arcChosen).toFixed(2)+' на старте — выше старт, дороже каждый успех.'+
+    '<br>🔓 Чтобы открыть старт с уровня N — <b>сдай зачёт всех 4 уроков</b> на сложности N (сейчас открыто до Ур. '+unlocked+').';
+}
+document.getElementById('arcadeBtn').onclick=()=>{ menuScreen.classList.add('hidden'); renderArcStart(); arcadeStartScreen.classList.remove('hidden'); };
+document.getElementById('arcStartBack').onclick=()=>{ arcadeStartScreen.classList.add('hidden'); toMenu(); };
+document.getElementById('arcStartGo').onclick=()=>{ arcadeStartScreen.classList.add('hidden'); startArcade(arcChosen); startLoop(); };
 
 /* ================= STATS SCREEN ================= */
 const statsScreen=document.getElementById('statsScreen');
