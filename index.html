@@ -73,6 +73,12 @@
   .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
   .hidden{display:none!important;}
   .pill{font-size:11px;color:#bba;letter-spacing:1px;text-transform:uppercase;}
+#dashBtn{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+  width:58px;height:58px;border-radius:50%;background:rgba(255,138,61,.92);
+  border:3px solid #1a1208;color:#1a1208;font-size:26px;z-index:6;
+  touch-action:none;-webkit-user-select:none;user-select:none;
+  box-shadow:0 3px 10px rgba(0,0,0,.45);transition:opacity .12s;}
+#dashBtn:active{transform:translateX(-50%) scale(.93);}
 </style>
 </head>
 <body>
@@ -88,6 +94,7 @@
     <canvas id="c"></canvas>
     <div id="coach" class="hidden"></div>
     <button id="skipDemoBtn" class="hidden">Пропустить показ ⏭</button>
+    <button id="dashBtn" class="hidden" aria-label="Рывок">⚡</button>
 
     <!-- MENU -->
     <div class="overlay" id="menuScreen">
@@ -108,7 +115,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v19</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v20</span></p>
      </div>
     </div>
 
@@ -516,7 +523,7 @@ function setDifficulty(v){
 
 /* ---------- Arcade (endless) mode ---------- */
 let arcade=false;          // when true: random unlocked lesson each rep, lives instead of rep count
-let arcadeLives=3, arcadeScore=0, arcadeReps=0, arcadeBestStreak=0, arcadeBaseLevel=0;
+let arcadeLives=3, arcadeScore=0, arcadeReps=0, arcadeBestStreak=0, arcadeBaseLevel=0, arcadeReturnLevel=0;
 const ARCADE_LIVES=3;
 function unlockedLessonIds(){
   return LEVELS.filter(lv=>!isLocked(lv)).map(lv=>lv.id);
@@ -569,6 +576,18 @@ function pUp(id){
     }
   }
 }
+const dashBtn=document.getElementById('dashBtn');
+function triggerDash(){
+  if(!(phase==='train'||phase==='test') || repLocked) return;
+  if(dashCooldown>0) return;
+  let dx=moveJoy.dx, dy=moveJoy.dy;
+  if(Math.hypot(dx,dy)<0.15){ dx=me&&me._ldx||0; dy=me&&me._ldy||0; }   // no stick → dash along facing
+  if(Math.hypot(dx,dy)<0.15) return;
+  dashT=0.32; dashCooldown=0.7;
+  if(navigator.vibrate) navigator.vibrate(12);
+}
+['touchstart','mousedown'].forEach(ev=>dashBtn.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();triggerDash();},{passive:false}));
+document.addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); triggerDash(); } });
 cv.addEventListener('touchstart',e=>{for(const t of e.changedTouches)pDown(t.identifier,toLogic(t.clientX,t.clientY));e.preventDefault();},{passive:false});
 cv.addEventListener('touchmove',e=>{for(const t of e.changedTouches)pMove(t.identifier,toLogic(t.clientX,t.clientY));e.preventDefault();},{passive:false});
 cv.addEventListener('touchend',e=>{for(const t of e.changedTouches)pUp(t.identifier);e.preventDefault();},{passive:false});
@@ -587,6 +606,7 @@ function updateScoreHud(){
   const inGame=(phase==='train'||phase==='test');
   el.style.display = inGame?'block':'none';
   ex.style.display = (inGame||phase==='demo')?'block':'none';
+  dashBtn.classList.toggle('hidden', !inGame);
   if(inGame){
     if(arcade){
       el.innerHTML = arcadeScore+'<br><span style="color:#19c2a0">×'+STATS.streak+'</span>';
@@ -964,13 +984,13 @@ function updateDemo(dt){
 let runFails=0;   // turnovers during the current train/test run (drives the star rating)
 function startTrain(){
   document.getElementById('skipDemoBtn').classList.add('hidden');
-  phase='train'; setBadge('ТРЕНИРОВКА'); setupScene();
+  phase='train'; setBadge('ТРЕНИРОВКА · '+difficulty.name); setupScene();
   reps=0; repsNeeded=3; stars=0; setStars(0); runFails=0;
   beginRep(true);
 }
 let runStartPts=0;
 function startTest(){
-  phase='test'; setBadge('ЗАЧЁТ'); setupScene();
+  phase='test'; setBadge('ЗАЧЁТ · '+difficulty.name); setupScene();
   runStartPts=STATS.totalPoints;
   reps=0; repsNeeded=5; stars=0; setStars(0); runFails=0;
   beginRep(false);
@@ -978,7 +998,8 @@ function startTest(){
 function startArcade(){
   arcade=true; phase='test';            // arcade runs on the live-defense 'test' engine
   arcadeLives=ARCADE_LIVES; arcadeScore=0; arcadeReps=0; arcadeBestStreak=0;
-  arcadeBaseLevel=difficulty.level;      // difficulty ramps during the run, restore after
+  arcadeReturnLevel=difficulty.level;    // the player's own level — restored after the run
+  arcadeBaseLevel=1; difficulty=mkDiff(1); // arcade ALWAYS starts at Ур.1 and ramps up
   STATS.streak=0;                        // fresh streak for the run
   setBadge('АРКАДА · '+difficulty.name); // hud shows hearts instead of stars
   currentLesson=pickArcadeLesson();
@@ -1125,14 +1146,14 @@ function update(dt){
           targetZone=computeCutTarget();
           if(guided) showCoach('<b>Шаг 2.</b> Пас отдан! Теперь <b>беги</b> в зону 🎯 — резко смени направление, чтобы оторваться.');
         }
-      } else if(stepState==='shootAim' && me.hasBall){
+      } else if((stepState==='shootAim'||stepState==='layup') && me.hasBall){
         if(tryPlayerShot()) guardT=0;
       }
     }
 
     // --- PRESSURE & STEAL TIMER (3–5s window to pass / to shoot) ---
     // find the defender stuck to the ballhandler; he pressures but CANNOT intercept the pass
-    if((stepState==='hasBall'||stepState==='shootAim') && me.hasBall){
+    if((stepState==='hasBall'||stepState==='shootAim'||stepState==='layup') && me.hasBall){
       let pi=-1, pd=R*2+(isTest?12:18);
       for(let i=0;i<defs.length;i++){const dd=dist(defs[i],me); if(dd<pd){pd=dd;pi=i;}}
       presserIdx=pi;
@@ -1288,10 +1309,22 @@ function update(dt){
         ball.flying=false; ball.holder=ball.to; to.hasBall=true;
         ball.x=to.x; ball.y=to.y;
         if(ball.to==='me' && (phase==='train'||phase==='test')){
-          // caught in the open zone → YOU take the shot: aim with the right stick
-          stepState='shootAim';
-          if(guided) showCoach('<b>Бросай!</b> Потяни <b>правый</b> джойстик в сторону кольца 🏀 и отпусти.');
-          else showCoach('Бросай! Правый джойстик → кольцо 🏀');
+          // catch IN STRIDE toward the hoop with the marker trailing → drive to the rim
+          const toHx=HOOP.x-me.x, toHy=HOOP.y-me.y, toHd=Math.hypot(toHx,toHy)||1;
+          const mv=Math.hypot(moveJoy.dx,moveJoy.dy);
+          const movingToHoop = mv>0.25 && ((moveJoy.dx/mv)*(toHx/toHd)+(moveJoy.dy/mv)*(toHy/toHd))>0.6;
+          const defBehind = defs.length && dist(defs[0],HOOP) > dist(me,HOOP)+6;
+          if(movingToHoop && defBehind && toHd<190){
+            stepState='layup';
+            showCoach(guided
+              ? '<b>Неси до кольца!</b> Защитник за спиной — финишируй в проходе 🏀'
+              : 'Проход! Неси до кольца 🏀');
+          } else {
+            // caught in the open zone → YOU take the shot: aim with the right stick
+            stepState='shootAim';
+            if(guided) showCoach('<b>Бросай!</b> Потяни <b>правый</b> джойстик в сторону кольца 🏀 и отпусти.');
+            else showCoach('Бросай! Правый джойстик → кольцо 🏀');
+          }
         }
       }
       // --- FAIL 3: ball went out of bounds (bad aim) ---
@@ -1304,7 +1337,38 @@ function update(dt){
       }
     }
   }
+  // --- LAYUP: driving to the rim after a catch in stride ---
+  if(stepState==='layup' && me.hasBall && !repLocked){
+    const toHx=HOOP.x-me.x, toHy=HOOP.y-me.y, toHd=Math.hypot(toHx,toHy)||1;
+    const mv=Math.hypot(moveJoy.dx,moveJoy.dy);
+    const dot = mv>0.25 ? ((moveJoy.dx/mv)*(toHx/toHd)+(moveJoy.dy/mv)*(toHy/toHd)) : 1;
+    if(mv>0.25 && dot<0.1){
+      stepState='shootAim';
+      showCoach('Свернул в сторону — теперь <b>бросай</b>: правый джойстик в кольцо 🏀.');
+    } else if(toHd<46){
+      // finish at the rim — unless a defender got IN FRONT on the line
+      let blocked=false;
+      for(const d of defs){
+        const proj=((d.x-me.x)*toHx+(d.y-me.y)*toHy)/toHd;
+        if(proj>4 && dist(d,me)<difficulty.block && distPointSeg(d,me,HOOP)<15){ blocked=true; break; }
+      }
+      if(blocked){
+        me.hasBall=false; ball.holder=null; ball.flying=false; ball.x=me.x; ball.y=me.y;
+        flash('БЛОК-ШОТ!','#ff3b5c');
+        if(navigator.vibrate) navigator.vibrate(90);
+        failRep('Накрыли на проходе! Защитник успел встать перед кольцом — финишируй раньше или сверни.');
+      } else {
+        me.hasBall=false; ball.holder=null; ball.flying=true; ball.to='hoop';
+        ball.fromX=me.x; ball.fromY=me.y; ball.x=me.x; ball.y=me.y; ball.immuneDefs=[];
+        const a=Math.atan2(HOOP.y-me.y, HOOP.x-me.x);
+        const sp=260; ball.fx=Math.cos(a)*sp; ball.fy=Math.sin(a)*sp;
+        stepState='shooting';
+        flash('Проход!','#19c2a0');
+      }
+    }
+  }
   if(netT>0) netT-=dt;
+  dashBtn.style.opacity = (dashCooldown>0) ? '0.35' : '1';
 
   if(flashMsg){flashT+=dt; if(flashT>1.2)flashMsg=null;}
 }
@@ -1475,7 +1539,7 @@ function finishArcade(){
   } else if(!storageOK){
     rankMsg='(режим гостя — результат не сохраняется)';
   }
-  if(arcadeBaseLevel) difficulty=mkDiff(arcadeBaseLevel);   // restore the profile level
+  if(arcadeReturnLevel){ difficulty=mkDiff(arcadeReturnLevel); arcadeReturnLevel=0; }  // restore the profile level
   STATS.bestArcade=Math.max(STATS.bestArcade||0, arcadeScore);
   if(navigator.vibrate) navigator.vibrate([50,60,50,60,90]);
   persistProfile();
@@ -1665,7 +1729,7 @@ function draw(){
      (Math.abs(passJoy.dx)+Math.abs(passJoy.dy))>0.25){
     const m=Math.hypot(passJoy.dx,passJoy.dy)||1;
     const dx=passJoy.dx/m, dy=passJoy.dy/m;
-    const shooting = (stepState==='shootAim');
+    const shooting = (stepState==='shootAim'||stepState==='layup');
     const tgt = shooting ? HOOP : mate;
     const tol = shooting ? SHOT_TOLERANCE : PASS_TOLERANCE;
     const vx=tgt.x-me.x, vy=tgt.y-me.y, vm=Math.hypot(vx,vy)||1;
@@ -1840,7 +1904,7 @@ function buildMenu(){
 }
 function toMenu(){
   phase='menu'; arcade=false;
-  if(arcadeBaseLevel){ difficulty=mkDiff(arcadeBaseLevel); arcadeBaseLevel=0; }  // undo arcade ramp
+  if(arcadeReturnLevel){ difficulty=mkDiff(arcadeReturnLevel); arcadeReturnLevel=0; }  // undo arcade ramp
   setBadge('УРОК'); hideCoach(); setStars(0);
   doneScreen.classList.add('hidden'); introScreen.classList.add('hidden');
   document.getElementById('skipDemoBtn').classList.add('hidden');
