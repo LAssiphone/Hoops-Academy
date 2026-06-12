@@ -1,7 +1,7 @@
 /* Hoops Academy service worker: offline app shell.
    index.html — network-first (свежие версии при онлайне, кэш офлайн);
    иконки/манифест — cache-first; запросы к Supabase не перехватываем. */
-const CACHE='hoops-v15';
+const CACHE='hoops-v16';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
 
 self.addEventListener('install',e=>{
@@ -16,8 +16,10 @@ self.addEventListener('fetch',e=>{
   const url=new URL(req.url);
   if(url.origin!==location.origin) return;            // Supabase и прочее — мимо кэша
   if(req.mode==='navigate' || url.pathname.endsWith('/index.html')){
+    // cache:'no-cache' → браузер сверяет ETag с сервером: чистая ссылка всегда
+    // отдаёт ПОСЛЕДНЮЮ версию при онлайне, офлайн — из кэша
     e.respondWith(
-      fetch(req).then(r=>{
+      fetch(req.url,{cache:'no-cache',credentials:'same-origin'}).then(r=>{
         const copy=r.clone();
         caches.open(CACHE).then(c=>c.put('./index.html',copy));
         return r;
