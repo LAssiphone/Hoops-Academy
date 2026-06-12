@@ -108,7 +108,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v18</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v19</span></p>
      </div>
     </div>
 
@@ -472,9 +472,11 @@ const DIFF_MIN=1, DIFF_MAX=10;
 function mkDiff(L){
   L=Math.max(DIFF_MIN, Math.min(DIFF_MAX, Math.round(L)||5));
   if(L===10){
-    // NIGHTMARE — validated by a multi-dash sim: beatable, but only with relentless
-    // zigzag re-dashes (screen median ≈4s of perfect play) and instant-release shots.
-    return {level:10, name:'Ур. 10', defMul:1.70, sepNeed:46, laneNeed:26, steal:2.6, block:44};
+    // NIGHTMARE — per-defense tuned after live playtesting + sims:
+    // chase ×1.50 (human-brutal, not bot-only), deny needs a 18px-deep backdoor,
+    // give-and-go gets a full presser. All ≥95% beatable by a perfect-play bot.
+    return {level:10, name:'Ур. 10', defMul:1.50, sepNeed:46, laneNeed:26,
+            steal:2.6, block:44, denyMargin:18, gPress:1};
   }
   const t=(L-1)/9;
   const sep=Math.round(30 + (46-30)*t);
@@ -487,7 +489,9 @@ function mkDiff(L){
     steal:   +(6.0 - (6.0-3.1)*t).toFixed(2),
     // block never reaches the pass-separation threshold: if the pass legally fired,
     // an instant catch-and-shoot is guaranteed unblockable (no soft-lock by design)
-    block:   Math.min(Math.round(34 + (46-34)*t), sep-2)
+    block:   Math.min(Math.round(34 + (46-34)*t), sep-2),
+    denyMargin: Math.round(10 + (L-1)*0.9),          // how DEEP a backdoor must go
+    gPress:  Math.max(0, Math.min(1, (L-4)/6))       // give-and-go presser intensity
   };
 }
 const DIFF_LEGACY={easy:2, norm:5, hard:8};      // migrate old saved profiles
@@ -964,8 +968,10 @@ function startTrain(){
   reps=0; repsNeeded=3; stars=0; setStars(0); runFails=0;
   beginRep(true);
 }
+let runStartPts=0;
 function startTest(){
   phase='test'; setBadge('ЗАЧЁТ'); setupScene();
+  runStartPts=STATS.totalPoints;
   reps=0; repsNeeded=5; stars=0; setStars(0); runFails=0;
   beginRep(false);
 }
@@ -1035,15 +1041,21 @@ function update(dt){
         const d=defs[i], man=teamPlayers[d.mark];
         if(i===0 && stepState!=='receiving' && stepState!=='shooting'){
           let tx,ty;
+          let recovering=false;
           if(cfg.defense==='deny'){
-            // sit between me and the ball, a step off me toward the mate
-            const vx=mate.x-me.x, vy=mate.y-me.y, vm=Math.hypot(vx,vy)||1;
-            tx=me.x+vx/vm*26; ty=me.y+vy/vm*26;
+            if(dist(me,HOOP) < dist(d,HOOP)){
+              // I slipped goal-side: he abandons the deny and sprints to recover
+              tx=me.x+(HOOP.x-me.x)*0.3; ty=me.y+(HOOP.y-me.y)*0.3; recovering=true;
+            } else {
+              // sit between me and the ball, a step off me toward the mate
+              const vx=mate.x-me.x, vy=mate.y-me.y, vm=Math.hypot(vx,vy)||1;
+              tx=me.x+vx/vm*26; ty=me.y+vy/vm*26;
+            }
           } else {
             // chase me, slightly hoop-side
             tx=me.x+(HOOP.x-me.x)*0.06; ty=me.y+(HOOP.y-me.y)*0.06;
           }
-          const f=Math.min(1,dt*chaseSpd);
+          const f=Math.min(1,dt*chaseSpd*(recovering?0.65:1));
           d.x=clampX(lerp(d.x,tx,f)); d.y=clampY(lerp(d.y,ty,f));
         } else {
           const tx=man.x+(HOOP.x-man.x)*0.12, ty=man.y+(HOOP.y-man.y)*0.12;
@@ -1056,8 +1068,17 @@ function update(dt){
       // zone — not shaking off a chaser. Later tactics use livelier defense.
       const almostStatic = (currentLesson==='gng');
       const spd = (almostStatic ? (isTest ? 0.6 : 0.35) : (isTest ? 3.0 : 1.8)) * difficulty.defMul;
+      const gngChase = (isTest ? 2.4 : 1.7) * difficulty.defMul * difficulty.gPress;
       for(let i=0;i<defs.length;i++){
         const d=defs[i], man=teamPlayers[d.mark];
+        if(almostStatic && i===0 && difficulty.gPress>0 &&
+           stepState!=='receiving' && stepState!=='shooting'){
+          // higher levels: MY marker presses live (like the cut lessons)
+          const tx=me.x+(HOOP.x-me.x)*0.06, ty=me.y+(HOOP.y-me.y)*0.06;
+          const f=Math.min(1,dt*gngChase);
+          d.x=clampX(lerp(d.x,tx,f)); d.y=clampY(lerp(d.y,ty,f));
+          continue;
+        }
         let tightness = 0.12;                 // how far hoop-side the defender sits
         if(d.slack){
           // the slacking defender helps off / sags toward the ball → leaves a gap.
@@ -1140,15 +1161,27 @@ function update(dt){
     // --- mate returns the ball once I'm in the open zone with a clean lane ---
     if(stepState==='cutting' && mate.hasBall && targetZone){
       const inZone = dist(me,targetZone)<targetZone.r;
-      const laneGap = returnLaneGap();
       const need = Math.min(difficulty.laneNeed, 26);   // gng layouts guarantee ret>26
-      if(inZone && laneGap>need){
-        // mate's own defender can't intercept the return pass either
-        let mp=-1, mpd=R*2+16;
-        for(let i=0;i<defs.length;i++){const dd=dist(defs[i],mate); if(dd<mpd){mpd=dd;mp=i;}}
-        launchPass(mate,'me', mp);   // mate's defender can't intercept the return pass
+      // higher levels: the pressing marker must be SHAKEN before the ball comes back
+      const sepG = Math.round(difficulty.sepNeed * difficulty.gPress * 0.85);
+      const shaken = dist(defs[0],me) > sepG;
+      let mp=-1, mpd=R*2+16;
+      for(let i=0;i<defs.length;i++){const dd=dist(defs[i],mate); if(dd<mpd){mpd=dd;mp=i;}}
+      let laneGap=1e9;
+      for(let i=0;i<defs.length;i++){
+        if(i===mp) continue;
+        if(shaken && i===0) continue;                 // shaken marker can't cut the lane
+        const d=defs[i];
+        if(dist(d,me)<R*2+6 || dist(d,mate)<R*2+6) continue;
+        laneGap=Math.min(laneGap, distPointSeg(d, mate, me));
+      }
+      if(inZone && shaken && laneGap>need){
+        const immune=[mp]; if(shaken) immune.push(0); // shaken marker can't steal it either
+        launchPass(mate,'me', immune);
         stepState='receiving';
         if(guided) showCoach('<b>Шаг 3.</b> Лови обратный пас — ты открылся в пустой зоне!');
+      } else if(inZone && !shaken && guided){
+        showCoach('Опекун висит на тебе! <b>Рвани</b> резко в сторону внутри зоны — оторвись, и пас придёт.');
       } else if(inZone && laneGap<=need && guided){
         showCoach('Защитник режет линию! Сместись вбок в зоне — открой чистый угол к мячу.');
       }
@@ -1170,7 +1203,7 @@ function update(dt){
         const sepNeed = difficulty.sepNeed;
         // backdoor: the pass goes PAST the beaten marker, so once I'm goal-side of him
         // he no longer counts as blocking the lane (and can't intercept).
-        const beaten = cfg.defense==='deny' && dist(me,HOOP) < dist(defender,HOOP)-10;
+        const beaten = cfg.defense==='deny' && dist(me,HOOP) < dist(defender,HOOP)-difficulty.denyMargin;
         let laneGap=1e9;
         {
           let mp=-1, mpd=R*2+16;
@@ -1328,7 +1361,8 @@ function completeRep(){
   const base = (phase==='test') ? 150 : 100;
   const speedBonus = Math.max(0, Math.round((10-sec)*8));   // faster = more, 0 after 10s
   const streakBonus = STATS.streak*10;                       // reward consecutive successes
-  const pts = base + speedBonus + streakBonus;
+  const diffMult = 0.55 + 0.09*difficulty.level;             // Ур.5 = ×1.0, Ур.10 = ×1.45
+  const pts = Math.round((base + speedBonus + streakBonus) * diffMult);
   STATS.totalPoints += pts;
   STATS.reps++; STATS.success++;
   STATS.streak++; STATS.bestStreak=Math.max(STATS.bestStreak, STATS.streak);
@@ -1390,7 +1424,9 @@ function finishTest(){
   hideCoach();
   // honest stars: 3 = clean run, 2 = 1–2 turnovers, 1 = more
   const earned = runFails===0 ? 3 : (runFails<=2 ? 2 : 1);
-  progress[currentLesson]=Math.max(progress[currentLesson]||0, earned);
+  const runPts = Math.max(0, STATS.totalPoints - runStartPts);
+  const o=progOf(currentLesson);
+  progress[currentLesson]={ st:Math.max(o.st,earned), pts:Math.max(o.pts,runPts), lvl:Math.max(o.lvl,difficulty.level) };
   persistProfile();
   if(navigator.vibrate) navigator.vibrate([40,60,40,60,80]);
   const msg = earned===3
@@ -1756,11 +1792,17 @@ function loop(ts){
 function startLoop(){ if(!running){running=true;lastT=0;raf=requestAnimationFrame(loop);} }
 
 /* ---------- navigation ---------- */
+// progress[id] is a number (legacy: just stars) or {st,pts,lvl}; normalize on read
+function progOf(id){
+  const p=progress[id];
+  if(typeof p==='number') return {st:p, pts:0, lvl:0};
+  return p || {st:0, pts:0, lvl:0};
+}
 function isLocked(lv){
   // lessons unlock in a chain: pass the previous one to open the next
-  if(lv.id==='vcut')     return !(progress.gng>0);
-  if(lv.id==='backdoor') return !(progress.vcut>0);
-  if(lv.id==='screen')   return !(progress.backdoor>0);
+  if(lv.id==='vcut')     return !(progOf('gng').st>0);
+  if(lv.id==='backdoor') return !(progOf('vcut').st>0);
+  if(lv.id==='screen')   return !(progOf('backdoor').st>0);
   return !!lv.locked;
 }
 // upcoming tactics — shown as "СКОРО" posters at the end of the lesson list
@@ -1774,13 +1816,15 @@ function buildMenu(){
   lvlList.innerHTML='';
   LEVELS.forEach((lv,i)=>{
     const locked=isLocked(lv);
-    const st=progress[lv.id]||0;
+    const rec=progOf(lv.id);
+    const st=rec.st;
     let starStr='';for(let k=0;k<3;k++)starStr+= k<st?'★':'☆';
+    const recLine = rec.pts>0 ? '<div style="font-size:9px;color:#9b8f80;margin-top:2px;white-space:nowrap;">Ур.'+rec.lvl+' · '+rec.pts+'</div>' : '';
     const div=document.createElement('div');
     div.className='lvl '+(locked?'locked':'open');
     div.innerHTML='<div class="num">'+(i+1)+'</div>'+
       '<div class="body"><div class="t">'+lv.title+(locked?' 🔒':'')+'</div><div class="d">'+lv.tag+'</div></div>'+
-      '<div class="st">'+(locked?('пройди №'+i):starStr)+'</div>';
+      '<div class="st">'+(locked?('пройди №'+i):(starStr+recLine))+'</div>';
     if(!locked) div.onclick=()=>openLesson(i);
     lvlList.appendChild(div);
   });
@@ -2349,7 +2393,7 @@ function renderStats(){
   // progress per lesson
   document.getElementById('statsProgress').innerHTML =
     LEVELS.map(l=>{
-      const st=progress[l.id]||0;
+      const st=progOf(l.id).st;
       const stars='★'.repeat(st)+'☆'.repeat(3-st);
       const lock=l.locked?' <span style="color:#6b6155">(скоро)</span>':'';
       return '<div>'+l.title+' — <span style="color:#ffd23f">'+stars+'</span>'+lock+'</div>';
