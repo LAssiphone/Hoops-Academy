@@ -92,11 +92,11 @@
     <!-- MENU -->
     <div class="overlay" id="menuScreen">
      <div class="overlay-inner">
-      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;margin-bottom:2px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;margin-bottom:2px;">
         <button class="go ghost" id="openProfileBtn" title="Игрок"
-          style="font-size:20px;padding:8px 12px;border-radius:14px;">👤</button>
+          style="flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:14px;text-align:left;justify-content:flex-start;"></button>
         <button class="go ghost" id="menuSettingsBtn" title="Настройки"
-          style="font-size:20px;padding:8px 12px;border-radius:14px;">⚙️</button>
+          style="font-size:20px;padding:8px 12px;border-radius:14px;flex:none;">⚙️</button>
       </div>
       <h1>HOOPS <span>ACADEMY</span></h1>
       <p>Учимся двигаться <b>без мяча</b>: куда бежать, когда открыться, как помочь команде. Каждый урок — новая тактика.</p>
@@ -108,7 +108,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v17</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v18</span></p>
      </div>
     </div>
 
@@ -326,7 +326,7 @@ function addLeader(entry){
   saveDB();
   return DB.leaders.indexOf(entry);   // rank, or -1 if it fell off
 }
-function blankStats(){ return {totalPoints:0,bestRep:0,streak:0,bestStreak:0,reps:0,success:0,fails:0,history:[]}; }
+function blankStats(){ return {totalPoints:0,bestRep:0,streak:0,bestStreak:0,reps:0,success:0,fails:0,history:[],bestArcade:0}; }
 function applyProfile(name){
   // copy saved data INTO the live objects (they're referenced all over the code)
   const p=DB.profiles[name]; if(!p) return;
@@ -349,10 +349,22 @@ function persistProfile(){
 }
 function updateProfileBtn(){
   const b=document.getElementById('openProfileBtn');
-  if(!storageOK){ b.textContent='👤'; b.title='Гость'; return; }
+  const nameLine = sStyle => '<span style="min-width:0;overflow:hidden;">'+sStyle+'</span>';
+  if(!storageOK){
+    b.innerHTML='<span style="font-size:22px;flex:none;">👤</span>'+nameLine(
+      '<b style="font-size:13px;color:#e9dfd1;">Гость</b><br><small style="font-size:10px;color:#9b8f80;">'+difficulty.name+'</small>');
+    return;
+  }
   const p=DB.active && DB.profiles[DB.active];
-  b.textContent = p ? p.avatar : '👤';
-  b.title = DB.active || 'Игрок';
+  if(!p){
+    b.innerHTML='<span style="font-size:22px;flex:none;">👤</span>'+nameLine(
+      '<b style="font-size:13px;color:#e9dfd1;">Игрок</b><br><small style="font-size:10px;color:#9b8f80;">нажми, чтобы выбрать</small>');
+    return;
+  }
+  const best=(p.stats&&p.stats.bestArcade)||0;
+  b.innerHTML='<span style="font-size:22px;flex:none;">'+p.avatar+'</span>'+nameLine(
+    '<b style="font-size:13px;color:#e9dfd1;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;display:block;max-width:150px;">'+escHtml(DB.active)+'</b>'+
+    '<small style="font-size:10px;color:#9b8f80;white-space:nowrap;">'+difficulty.name+' · 🏆 '+best+'</small>');
 }
 
 /* ---------- Supabase: global online leaderboard ----------
@@ -1428,6 +1440,7 @@ function finishArcade(){
     rankMsg='(режим гостя — результат не сохраняется)';
   }
   if(arcadeBaseLevel) difficulty=mkDiff(arcadeBaseLevel);   // restore the profile level
+  STATS.bestArcade=Math.max(STATS.bestArcade||0, arcadeScore);
   if(navigator.vibrate) navigator.vibrate([50,60,50,60,90]);
   persistProfile();
   showDone('Забег окончен!', String(arcadeScore),
@@ -1793,6 +1806,7 @@ function toMenu(){
   settingsScreen.classList.add('hidden');
   installScreen.classList.add('hidden');
   refreshInstallUi();
+  updateProfileBtn();
   buildMenu(); menuScreen.classList.remove('hidden');
 }
 function openLesson(i){
@@ -2075,7 +2089,7 @@ function renderDiff(){
     b.onclick=()=>{
       setDifficulty(L);
       if(storageOK && DB.active && DB.profiles[DB.active]){ DB.profiles[DB.active].difficulty=L; saveDB(); }
-      renderDiff();
+      renderDiff(); updateProfileBtn();
     };
     row.appendChild(b);
   }
