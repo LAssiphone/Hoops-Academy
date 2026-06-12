@@ -115,7 +115,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v21</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v22</span></p>
      </div>
     </div>
 
@@ -2244,7 +2244,8 @@ function renderProfiles(){
   list.innerHTML='';
   names.forEach(n=>{
     const p=DB.profiles[n];
-    const st=p.progress?Object.values(p.progress).reduce((s,v)=>s+(v||0),0):0;
+    // progress values are numbers (legacy) or {st,pts,lvl} records — normalize
+    const st=p.progress?Object.values(p.progress).reduce((s,v)=>s+(typeof v==='number'?v:((v&&v.st)||0)),0):0;
     const pts=(p.stats&&p.stats.totalPoints)||0;
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:10px;background:#15110d;border:2px solid '+(n===DB.active?'#19c2a0':'#2a241d')+';border-radius:12px;padding:10px 12px;cursor:pointer;';
