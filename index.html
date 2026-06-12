@@ -108,7 +108,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v16</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v17</span></p>
      </div>
     </div>
 
@@ -459,15 +459,23 @@ let currentLesson='gng';   // which tactic we're teaching (controls defender agg
 const DIFF_MIN=1, DIFF_MAX=10;
 function mkDiff(L){
   L=Math.max(DIFF_MIN, Math.min(DIFF_MAX, Math.round(L)||5));
+  if(L===10){
+    // NIGHTMARE — validated by a multi-dash sim: beatable, but only with relentless
+    // zigzag re-dashes (screen median ≈4s of perfect play) and instant-release shots.
+    return {level:10, name:'Ур. 10', defMul:1.70, sepNeed:46, laneNeed:26, steal:2.6, block:44};
+  }
   const t=(L-1)/9;
+  const sep=Math.round(30 + (46-30)*t);
   return {
     level:L,
     name:'Ур. '+L,
     defMul:  +(0.55 + (1.45-0.55)*t).toFixed(3),
-    sepNeed: Math.round(30 + (46-30)*t),
+    sepNeed: sep,
     laneNeed:Math.round(18 + (26-18)*t),
     steal:   +(6.0 - (6.0-3.1)*t).toFixed(2),
-    block:   Math.round(34 + (47-34)*t)
+    // block never reaches the pass-separation threshold: if the pass legally fired,
+    // an instant catch-and-shoot is guaranteed unblockable (no soft-lock by design)
+    block:   Math.min(Math.round(34 + (46-34)*t), sep-2)
   };
 }
 const DIFF_LEGACY={easy:2, norm:5, hard:8};      // migrate old saved profiles
@@ -480,7 +488,7 @@ function diffHint(L){
   if(L<=3)  return '🙂 Спокойная защита — учимся без спешки.';
   if(L<=6)  return '⚔️ Боевая защита — нужен чёткий отрыв.';
   if(L<=9)  return '🔥 Быстрая цепкая защита — для уверенных.';
-  return '💀 Максимум: защита почти не отстаёт. Только идеальные рывки!';
+  return '💀 Почти невозможно: защита НЕ отстаёт. Рви зигзагом без остановки и бросай в касание!';
 }
 // DIFFS kept as named presets for legacy leaderboard rows
 const DIFFS={easy:{name:'Новичок'}, norm:{name:'Игрок'}, hard:{name:'Профи'}};
