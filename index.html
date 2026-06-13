@@ -115,7 +115,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v23</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v24</span></p>
      </div>
     </div>
 
@@ -137,7 +137,7 @@
     <div class="overlay hidden" id="arcadeStartScreen">
      <div class="overlay-inner" style="max-width:460px;width:100%;">
       <h1>🔥 Аркада</h1>
-      <p style="font-size:13px;color:#cabfae;margin:2px 0 8px;">Выбери <b>стартовый уровень</b> защиты:</p>
+      <p style="font-size:13px;color:#cabfae;margin:2px 0 8px;">Твой <b>потолок сложности</b> в этом забеге:</p>
       <div id="arcLvlRow" style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:8px;"></div>
       <p id="arcHint" style="font-size:11px;color:#9b8f80;margin:0 0 12px;line-height:1.45;"></p>
       <div class="row">
@@ -565,7 +565,7 @@ function setDifficulty(v){
 
 /* ---------- Arcade (endless) mode ---------- */
 let arcade=false;          // when true: random unlocked lesson each rep, lives instead of rep count
-let arcadeLives=3, arcadeScore=0, arcadeReps=0, arcadeBestStreak=0, arcadeBaseLevel=0, arcadeReturnLevel=0;
+let arcadeLives=3, arcadeScore=0, arcadeReps=0, arcadeBestStreak=0, arcadeBaseLevel=0, arcadeReturnLevel=0, arcadeCap=10;
 const ARCADE_LIVES=3;
 function unlockedLessonIds(){
   return LEVELS.filter(lv=>!isLocked(lv)).map(lv=>lv.id);
@@ -1043,12 +1043,12 @@ function startTest(){
   reps=0; repsNeeded=5; stars=0; setStars(0); runFails=0;
   beginRep(false);
 }
-function startArcade(startL){
-  startL=Math.max(1, Math.min(arcadeUnlockedLevel(), startL||1));
+function startArcade(){
   arcade=true; phase='test';            // arcade runs on the live-defense 'test' engine
   arcadeLives=ARCADE_LIVES; arcadeScore=0; arcadeReps=0; arcadeBestStreak=0;
   arcadeReturnLevel=difficulty.level;    // the player's own level — restored after the run
-  arcadeBaseLevel=startL; difficulty=mkDiff(startL);  // ramps up from the chosen start
+  arcadeCap=arcadeUnlockedLevel();       // ramp ceiling = highest level you've unlocked
+  arcadeBaseLevel=1; difficulty=mkDiff(1);  // ALWAYS starts at Ур.1
   STATS.streak=0;                        // fresh streak for the run
   setBadge('АРКАДА · '+difficulty.name); // hud shows hearts instead of stars
   currentLesson=pickArcadeLesson();
@@ -1489,12 +1489,15 @@ function completeRep(){
     arcadeScore += pts; arcadeReps++;
     arcadeBestStreak=Math.max(arcadeBestStreak, STATS.streak);
     // every 10 successful reps the defense gets one level meaner (cap 10)
-    const tgt=Math.min(DIFF_MAX, arcadeBaseLevel + Math.floor(arcadeReps/10));
+    const tgt=Math.min(arcadeCap, 1 + Math.floor(arcadeReps/10));
     if(tgt>difficulty.level){
       difficulty=mkDiff(tgt);
       setBadge('АРКАДА · '+difficulty.name);
       flash('Сложность ↑ '+difficulty.name+'!','#ff8a3d');
       if(navigator.vibrate) navigator.vibrate([40,40,40]);
+      if(tgt===arcadeCap && arcadeCap<DIFF_MAX){
+        setTimeout(()=>flash('Потолок: Ур. '+arcadeCap+' (открой выше в уроках)','#9b8f80'),700);
+      }
     }
     setTimeout(()=> beginRep(false), 850);
     return;
@@ -1578,7 +1581,7 @@ function finishArcade(){
   let rankMsg='';
   if(prof && arcadeScore>0){
     const entry={name:DB.active, avatar:prof.avatar, uid:prof.uid||'', score:arcadeScore, reps:arcadeReps,
-                 streak:arcadeBestStreak, diff:reached, lvl:arcadeBaseLevel, t:Date.now()};
+                 streak:arcadeBestStreak, diff:reached, lvl:reached, t:Date.now()};
     const rank=addLeader(entry);
     sbSubmitRun(entry).then(ok=>{
       // surface silent failures WITH the exact server reply
@@ -1599,7 +1602,7 @@ function finishArcade(){
   if(navigator.vibrate) navigator.vibrate([50,60,50,60,90]);
   persistProfile();
   showDone('Забег окончен!', String(arcadeScore),
-    'Старт Ур. '+arcadeBaseLevel+' → дошёл до Ур. '+reached+'\nПовторов: '+arcadeReps+' · Лучшая серия: ×'+arcadeBestStreak+'\n'+rankMsg+'\n«Дальше» — новый забег.',
+    'Дошёл до Ур. '+reached+' из '+arcadeCap+' (твой потолок)\nПовторов: '+arcadeReps+' · Лучшая серия: ×'+arcadeBestStreak+'\n'+rankMsg+'\n«Дальше» — новый забег.',
     ()=>startArcade());
 }
 
@@ -2406,7 +2409,7 @@ function ldRow(e,i,dateStr){
     '<div style="width:30px;text-align:center;font-size:'+(i<3?'18px':'13px')+';font-weight:700;color:#ffd23f;">'+medal+'</div>'+
     '<div style="font-size:18px">'+escHtml(String(e.avatar||'🏀').slice(0,4))+'</div>'+
     '<div style="flex:1;text-align:left;"><div style="font-weight:700;color:#e9dfd1;font-size:14px;">'+escHtml(String(e.name||'?').slice(0,14))+(e.uid?' <span style="font-weight:400;font-size:9px;color:#5c5347;">#'+escHtml(String(e.uid).slice(-4))+'</span>':'')+'</div>'+
-    '<div style="font-size:10px;color:#9b8f80;">'+(e.lvl?('старт Ур.'+(e.lvl|0)+' · '):'')+(e.reps|0)+' повторов · серия ×'+(e.streak|0)+' · '+dn+' · '+dateStr+'</div></div>'+
+    '<div style="font-size:10px;color:#9b8f80;">'+(e.lvl?('до Ур.'+(e.lvl|0)+' · '):'')+(e.reps|0)+' повторов · серия ×'+(e.streak|0)+' · '+dn+' · '+dateStr+'</div></div>'+
     '<div style="font-weight:800;color:#19c2a0;font-size:16px;">'+(e.score|0)+'</div></div>';
 }
 function ldTabsUi(){
@@ -2439,7 +2442,7 @@ function renderLeaders(){
         wl.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">Не удалось загрузить.\n\n'+escHtml(sbExplain())+'</div>';
         return;
       }
-      if(rows.length===0){ wl.innerHTML='<div style="color:#6b6155;font-size:12px;">'+(leaderLvl?('На старте Ур.'+leaderLvl+' пока пусто — стань первым!'):'Пока пусто — стань первым в мире!')+'</div>'; return; }
+      if(rows.length===0){ wl.innerHTML='<div style="color:#6b6155;font-size:12px;">'+(leaderLvl?('До Ур.'+leaderLvl+' пока никто не дошёл — стань первым!'):'Пока пусто — стань первым в мире!')+'</div>'; return; }
       wl.innerHTML=rows.map((e,i)=>{
         const d=e.created_at? new Date(e.created_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) : '';
         return ldRow(e,i,d);
@@ -2505,26 +2508,29 @@ document.getElementById('leaderClearBtn').onclick=()=>{
 const arcadeStartScreen=document.getElementById('arcadeStartScreen');
 let arcChosen=1;
 function renderArcStart(){
-  const unlocked=arcadeUnlockedLevel();
-  arcChosen=Math.min(arcChosen||1, unlocked);
+  const cap=arcadeUnlockedLevel();
   const row=document.getElementById('arcLvlRow');
   row.innerHTML='';
+  // show the ladder 1..10: levels up to the ceiling lit, beyond it locked
   for(let L=DIFF_MIN; L<=DIFF_MAX; L++){
-    const open=L<=unlocked, on=(arcChosen===L), hot=L===10;
-    const b=document.createElement('button');
+    const open=L<=cap, top=(L===cap), hot=L===10;
+    const b=document.createElement('div');
     b.textContent=open?(hot?'💀10':String(L)):'🔒'+L;
-    b.style.cssText='font-size:13px;font-weight:700;min-width:38px;padding:8px 0;border-radius:10px;font-family:\'Space Mono\',monospace;cursor:'+(open?'pointer':'default')+';opacity:'+(open?'1':'0.4')+';background:'+(on?(hot?'#ff3b5c':'#19c2a0'):'#15110d')+';color:'+(on?'#0f0b08':'#cabfae')+';border:2px solid '+(on?(hot?'#ff3b5c':'#19c2a0'):'#3a332a')+';';
-    if(open) b.onclick=()=>{ arcChosen=L; renderArcStart(); };
+    b.style.cssText='font-size:13px;font-weight:700;min-width:38px;padding:8px 0;border-radius:10px;text-align:center;font-family:\'Space Mono\',monospace;opacity:'+(open?'1':'0.4')+';background:'+(top?(hot?'#ff3b5c':'#19c2a0'):'#15110d')+';color:'+(top?'#0f0b08':'#cabfae')+';border:2px solid '+(top?(hot?'#ff3b5c':'#19c2a0'):(open?'#3a332a':'#241f18'))+';';
     row.appendChild(b);
   }
+  const next=Math.min(DIFF_MAX, cap+1);
   document.getElementById('arcHint').innerHTML =
-    'Защита стартует с <b>Ур. '+arcChosen+'</b> и злеет каждые 10 успешных повторов.'+
-    '<br>Очки умножаются на уровень: ×'+(0.55+0.09*arcChosen).toFixed(2)+' на старте — выше старт, дороже каждый успех.'+
-    '<br>🔓 Чтобы открыть старт с уровня N — <b>сдай зачёт всех 4 уроков</b> на сложности N (сейчас открыто до Ур. '+unlocked+').';
+    'Старт всегда с <b>Ур. 1</b>, защита злеет каждые 10 успешных повторов — '+
+    'до твоего потолка <b>Ур. '+cap+'</b> (×'+(0.55+0.09*cap).toFixed(2)+' очков на пике).'+
+    '<br>Чем выше потолок, тем дольше копится множитель и тем больше очков можно набрать.'+
+    (cap<DIFF_MAX
+      ? '<br>🔓 Поднять потолок до <b>Ур. '+next+'</b>: сдай зачёт всех 4 уроков на сложности '+next+'.'
+      : '<br>🏆 Открыт максимум — потолок Ур. 10!');
 }
 document.getElementById('arcadeBtn').onclick=()=>{ menuScreen.classList.add('hidden'); renderArcStart(); arcadeStartScreen.classList.remove('hidden'); };
 document.getElementById('arcStartBack').onclick=()=>{ arcadeStartScreen.classList.add('hidden'); toMenu(); };
-document.getElementById('arcStartGo').onclick=()=>{ arcadeStartScreen.classList.add('hidden'); startArcade(arcChosen); startLoop(); };
+document.getElementById('arcStartGo').onclick=()=>{ arcadeStartScreen.classList.add('hidden'); startArcade(); startLoop(); };
 
 /* ================= STATS SCREEN ================= */
 const statsScreen=document.getElementById('statsScreen');
