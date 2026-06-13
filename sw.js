@@ -1,7 +1,7 @@
 /* Hoops Academy service worker: offline app shell.
    index.html — network-first (свежие версии при онлайне, кэш офлайн);
    иконки/манифест — cache-first; запросы к Supabase не перехватываем. */
-const CACHE='hoops-v24';
+const CACHE='hoops-v25';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./apple-touch-icon.png'];
 
 self.addEventListener('install',e=>{

@@ -115,7 +115,7 @@
         <button class="go ghost" id="openStatsBtn" style="font-size:14px;padding:10px 18px">📊 Статистика</button>
       </div>
       <button class="go ghost" id="installBtn" style="font-size:13px;padding:9px 16px;display:none;">📲 Установить как приложение</button>
-      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v24</span></p>
+      <p style="font-size:11px;color:#9b8f80">Левый джойстик — бег. Правый — направление паса. <span style="color:#5c5347">· v25</span></p>
      </div>
     </div>
 
@@ -199,9 +199,10 @@
     <div class="overlay hidden" id="leaderScreen">
      <div class="overlay-inner" style="max-width:480px;width:100%;">
       <h1>🏆 Лидеры</h1>
-      <div style="display:flex;gap:6px;justify-content:center;margin:4px 0 8px;">
-        <button class="go ghost" id="ldTabWorld" style="font-size:13px;padding:8px 16px">🌍 Общий</button>
-        <button class="go ghost" id="ldTabLocal" style="font-size:13px;padding:8px 16px">📱 Устройство</button>
+      <div style="display:flex;gap:6px;justify-content:center;margin:4px 0 8px;flex-wrap:wrap;">
+        <button class="go ghost" id="ldTabWorld" style="font-size:13px;padding:8px 14px">🌍 Аркада</button>
+        <button class="go ghost" id="ldTabLessons" style="font-size:13px;padding:8px 14px">🎯 Тренировки</button>
+        <button class="go ghost" id="ldTabLocal" style="font-size:13px;padding:8px 14px">📱 Устройство</button>
       </div>
       <p id="leaderNote" style="font-size:12px;color:#9b8f80;margin:0 0 10px;">Лучшие забеги в Аркаде.</p>
       <div id="leaderList" style="width:100%;display:flex;flex-direction:column;gap:6px;"></div>
@@ -246,6 +247,9 @@
       <div class="pill" id="introPill">Урок 1</div>
       <h1 id="introTitle">Give-and-go</h1>
       <p id="introText"></p>
+      <div id="introScore" style="width:100%;background:#15110d;border:2px solid #2a241d;border-radius:12px;padding:10px 13px;margin:4px 0 10px;font-size:12px;color:#cabfae;text-align:left;line-height:1.5;"></div>
+      <div style="width:100%;text-align:left;font-size:11px;color:#9b8f80;margin-bottom:4px;letter-spacing:.5px;">🏆 ЛУЧШИЕ НА ЭТОМ УРОКЕ</div>
+      <div id="introBoard" style="width:100%;display:flex;flex-direction:column;gap:5px;margin-bottom:12px;"></div>
       <div class="row">
         <button class="go" id="watchBtn">Смотреть показ ▶</button>
         <button class="go ghost" id="skipIntroBtn">Пропустить ⏭</button>
@@ -471,6 +475,33 @@ async function sbSubmitRun(e){
   if(r){ sbSubmitErr=null; return true; }
   sbSubmitErr = sbLastErr ? Object.assign({}, sbLastErr) : {status:-1, body:'нет деталей'};
   return false;
+}
+async function sbSubmitLesson(e){
+  if(!sbOn()) return false;
+  const payload={
+    lesson:String(e.lesson||'').slice(0,16),
+    name:String(e.name||'игрок').slice(0,14),
+    avatar:String(e.avatar||'🏀'),
+    uid:String(e.uid||'').slice(0,24),
+    score:Math.max(1,Math.min(99999, e.score|0)),
+    lvl:Math.max(1,Math.min(10, e.lvl|0))||1,
+    stars:Math.max(0,Math.min(3, e.stars|0))
+  };
+  let r=await sbCall('/rest/v1/lesson_scores',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(payload)});
+  if(!r && sbLastErr && /uid|stars|lvl|PGRST204/i.test(String(sbLastErr.body||''))){
+    const p2=Object.assign({},payload); delete p2.uid; delete p2.stars;
+    r=await sbCall('/rest/v1/lesson_scores',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(p2)});
+  }
+  return !!r;
+}
+async function sbFetchLesson(lesson, limit){
+  if(!sbOn()) return null;
+  let r=await sbCall('/rest/v1/lesson_scores?select=name,avatar,uid,score,lvl,stars,created_at&lesson=eq.'+encodeURIComponent(lesson)+'&order=score.desc&limit='+(limit||20),{method:'GET'});
+  if(!r && sbLastErr && /uid|stars|42703|PGRST/i.test(String(sbLastErr.body||''))){
+    r=await sbCall('/rest/v1/lesson_scores?select=name,avatar,score,lvl,created_at&lesson=eq.'+encodeURIComponent(lesson)+'&order=score.desc&limit='+(limit||20),{method:'GET'});
+  }
+  if(!r) return null;
+  try{ return await r.json(); }catch(e){ return null; }
 }
 async function sbFetchTop(limit, lvl){
   if(!sbOn()) return null;
@@ -1547,6 +1578,12 @@ function finishTest(){
   const nowUnlocked = arcadeUnlockedLevel();
   if(nowUnlocked>wasUnlocked) arcadeUnlockMsg='\n🔓 Аркада: открыт старт с Ур. '+nowUnlocked+'!';
   persistProfile();
+  // submit this test score to the lesson's online leaderboard
+  if(storageOK && DB.active && DB.profiles[DB.active] && runPts>0){
+    const pr=DB.profiles[DB.active];
+    sbSubmitLesson({lesson:currentLesson, name:DB.active, avatar:pr.avatar, uid:pr.uid||'',
+                    score:runPts, lvl:difficulty.level, stars:earned});
+  }
   if(navigator.vibrate) navigator.vibrate([40,60,40,60,80]);
   const msg = earned===3
     ? 'Безупречно — ни одной потери! Двигаться без мяча — это и есть командная игра.'
@@ -1976,6 +2013,15 @@ function toMenu(){
   updateProfileBtn();
   buildMenu(); menuScreen.classList.remove('hidden');
 }
+function scoringHtml(){
+  const m=(0.55+0.09*difficulty.level).toFixed(2);
+  return '<b>Как начисляются очки</b> (зачёт):'+
+    '<br>• <b>+150</b> за каждый успешный розыгрыш'+
+    '<br>• <b>+бонус за скорость</b>: до +80, если уложился быстро'+
+    '<br>• <b>+серия</b>: +10 за каждый успех подряд (потеря обнуляет)'+
+    '<br>• всё умножается на <b>множитель сложности</b>: сейчас Ур. '+difficulty.level+' → <b>×'+m+'</b>'+
+    '<br><span style="color:#9b8f80">Зачёт — 5 розыгрышей. 0 потерь = ★★★. Чем выше уровень, тем дороже очки и серьёзнее защита.</span>';
+}
 function openLesson(i){
   const lv=LEVELS[i];
   currentLesson=lv.id;
@@ -1983,6 +2029,11 @@ function openLesson(i){
   document.getElementById('hTitle').innerHTML=lv.title+'<small>'+lv.tag+'</small>';
   document.getElementById('introTitle').textContent=lv.title;
   document.getElementById('introText').innerHTML=lv.intro;
+  document.getElementById('introScore').innerHTML=scoringHtml();
+  // per-lesson leaderboard preview
+  const ib=document.getElementById('introBoard');
+  ib.innerHTML='<div style="color:#6b6155;font-size:11px;">Загрузка…</div>';
+  renderLessonBoardInto(ib, lv.id, 5);
   menuScreen.classList.add('hidden');
   introScreen.classList.remove('hidden');
 }
@@ -2413,41 +2464,66 @@ function ldRow(e,i,dateStr){
     '<div style="font-weight:800;color:#19c2a0;font-size:16px;">'+(e.score|0)+'</div></div>';
 }
 function ldTabsUi(){
-  const w=document.getElementById('ldTabWorld'), l=document.getElementById('ldTabLocal');
+  const w=document.getElementById('ldTabWorld'), le=document.getElementById('ldTabLessons'), l=document.getElementById('ldTabLocal');
   const on='background:#19c2a0;color:#0f0b08;border-color:#19c2a0;';
-  w.style.cssText='font-size:13px;padding:8px 16px;'+(leaderTab==='world'?on:'');
-  l.style.cssText='font-size:13px;padding:8px 16px;'+(leaderTab==='local'?on:'');
+  w.style.cssText='font-size:13px;padding:8px 14px;'+(leaderTab==='world'?on:'');
+  le.style.cssText='font-size:13px;padding:8px 14px;'+(leaderTab==='lessons'?on:'');
+  l.style.cssText='font-size:13px;padding:8px 14px;'+(leaderTab==='local'?on:'');
   document.getElementById('leaderClearBtn').style.display = leaderTab==='local'?'':'none';
-  document.getElementById('leaderNote').textContent = leaderTab==='world'
-    ? 'Общий рейтинг всех игроков (онлайн).' : 'Лучшие забеги на этом устройстве.';
+  document.getElementById('leaderNote').textContent =
+    leaderTab==='world' ? 'Общий рейтинг Аркады (онлайн).' :
+    leaderTab==='lessons' ? 'Лучшие зачёты по каждой тренировке (онлайн).' :
+    'Лучшие забеги на этом устройстве.';
 }
+// shared renderer for a single lesson's online board
+function renderLessonBoardInto(box, lessonId, limit){
+  if(!sbOn()){ box.innerHTML='<div style="color:#6b6155;font-size:11px;">Общий рейтинг ещё не подключён.</div>'; return; }
+  box.innerHTML='<div style="color:#9b8f80;font-size:11px;">Загрузка…</div>';
+  sbFetchLesson(lessonId, limit||20).then(rows=>{
+    if(!rows){ box.innerHTML='<div style="color:#ff8a3d;font-size:11px;">Не удалось загрузить рейтинг.</div>'; return; }
+    if(rows.length===0){ box.innerHTML='<div style="color:#6b6155;font-size:11px;">Пока пусто — сдай зачёт первым!</div>'; return; }
+    box.innerHTML=rows.map((e,i)=>{
+      const d=e.created_at? new Date(e.created_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) : '';
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':((i+1)+'.');
+      const stars=e.stars!=null?(' · '+'★'.repeat(e.stars|0)):'';
+      return '<div style="display:flex;align-items:center;gap:9px;background:#15110d;border:2px solid '+(i===0?'#ffd23f':'#2a241d')+';border-radius:10px;padding:7px 11px;">'+
+        '<div style="width:26px;text-align:center;font-weight:700;color:#ffd23f;font-size:'+(i<3?'16px':'12px')+';">'+medal+'</div>'+
+        '<div style="font-size:16px">'+escHtml(String(e.avatar||'🏀').slice(0,4))+'</div>'+
+        '<div style="flex:1;text-align:left;min-width:0;"><div style="font-weight:700;color:#e9dfd1;font-size:13px;">'+escHtml(String(e.name||'?').slice(0,14))+(e.uid?' <span style="font-weight:400;font-size:9px;color:#5c5347;">#'+escHtml(String(e.uid).slice(-4))+'</span>':'')+'</div>'+
+        '<div style="font-size:9px;color:#9b8f80;">Ур.'+(e.lvl|0)+stars+' · '+d+'</div></div>'+
+        '<div style="font-weight:800;color:#19c2a0;font-size:15px;">'+(e.score|0)+'</div></div>';
+    }).join('');
+  });
+}
+let lessonTabId='gng';
 function renderLeaders(){
   ldTabsUi();
   const el=document.getElementById('leaderList');
   if(leaderTab==='world'){
     if(!sbOn()){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Общий рейтинг ещё не подключён.</div>'; return; }
-    // per-start-level chips: Все, 1..10
-    let chips='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:8px;">';
-    for(let L=0; L<=DIFF_MAX; L++){
-      const on=(leaderLvl===L);
-      chips+='<button data-lvl="'+L+'" style="font-size:11px;font-weight:700;min-width:30px;padding:5px 6px;border-radius:8px;cursor:pointer;font-family:\'Space Mono\',monospace;background:'+(on?'#19c2a0':'#15110d')+';color:'+(on?'#0f0b08':'#cabfae')+';border:2px solid '+(on?'#19c2a0':'#3a332a')+';">'+(L===0?'Все':L)+'</button>';
-    }
-    chips+='</div>';
-    el.innerHTML=chips+'<div id="ldWorldList" style="display:flex;flex-direction:column;gap:6px;"><div style="color:#9b8f80;font-size:12px;">Загрузка…</div></div>';
-    el.querySelectorAll('button[data-lvl]').forEach(b=>{ b.onclick=()=>{ leaderLvl=parseInt(b.dataset.lvl,10); renderLeaders(); }; });
-    const wl=document.getElementById('ldWorldList');
-    sbFetchTop(20, leaderLvl||0).then(rows=>{
-      if(leaderTab!=='world') return;          // user switched tabs meanwhile
-      if(!rows){
-        wl.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">Не удалось загрузить.\n\n'+escHtml(sbExplain())+'</div>';
-        return;
-      }
-      if(rows.length===0){ wl.innerHTML='<div style="color:#6b6155;font-size:12px;">'+(leaderLvl?('До Ур.'+leaderLvl+' пока никто не дошёл — стань первым!'):'Пока пусто — стань первым в мире!')+'</div>'; return; }
-      wl.innerHTML=rows.map((e,i)=>{
+    el.innerHTML='<div style="color:#9b8f80;font-size:12px;">Загрузка…</div>';
+    sbFetchTop(20, 0).then(rows=>{       // single combined arcade list (no level filter)
+      if(leaderTab!=='world') return;
+      if(!rows){ el.innerHTML='<div style="color:#ff8a3d;font-size:12px;white-space:pre-wrap;text-align:left;">Не удалось загрузить.\n\n'+escHtml(sbExplain())+'</div>'; return; }
+      if(rows.length===0){ el.innerHTML='<div style="color:#6b6155;font-size:12px;">Пока пусто — стань первым в мире!</div>'; return; }
+      el.innerHTML=rows.map((e,i)=>{
         const d=e.created_at? new Date(e.created_at).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}) : '';
         return ldRow(e,i,d);
       }).join('');
     });
+    return;
+  }
+  if(leaderTab==='lessons'){
+    // lesson chips, then that lesson's board
+    let chips='<div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:center;margin-bottom:10px;">';
+    LEVELS.forEach(lv=>{
+      const on=(lessonTabId===lv.id);
+      chips+='<button data-les="'+lv.id+'" style="font-size:12px;font-weight:700;padding:6px 11px;border-radius:9px;cursor:pointer;font-family:\'Space Mono\',monospace;background:'+(on?'#19c2a0':'#15110d')+';color:'+(on?'#0f0b08':'#cabfae')+';border:2px solid '+(on?'#19c2a0':'#3a332a')+';">'+lv.title+'</button>';
+    });
+    chips+='</div>';
+    el.innerHTML=chips+'<div id="ldLesBox" style="display:flex;flex-direction:column;gap:5px;"></div>';
+    el.querySelectorAll('button[data-les]').forEach(b=>{ b.onclick=()=>{ lessonTabId=b.dataset.les; renderLeaders(); }; });
+    renderLessonBoardInto(document.getElementById('ldLesBox'), lessonTabId, 20);
     return;
   }
   // local tab
@@ -2463,6 +2539,7 @@ function openLeaders(){
   renderLeaders();
 }
 document.getElementById('ldTabWorld').onclick=()=>{ leaderTab='world'; renderLeaders(); };
+document.getElementById('ldTabLessons').onclick=()=>{ leaderTab='lessons'; renderLeaders(); };
 document.getElementById('ldTabLocal').onclick=()=>{ leaderTab='local'; renderLeaders(); };
 document.getElementById('openLeaderBtn').onclick=openLeaders;
 document.getElementById('leaderBackBtn').onclick=()=>{ leaderScreen.classList.add('hidden'); toMenu(); };
